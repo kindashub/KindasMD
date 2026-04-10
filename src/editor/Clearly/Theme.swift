@@ -8,7 +8,7 @@ enum Theme {
     // MARK: - Editor Font
     static var editorFontSize: CGFloat {
         let size = UserDefaults.standard.double(forKey: "editorFontSize")
-        return size > 0 ? CGFloat(size) : 16
+        return size > 0 ? CGFloat(size) : 12
     }
 
     /// Primary editor face: Menlo when available, else system monospaced.
@@ -37,7 +37,7 @@ enum Theme {
     static let editorInsetBottom: CGFloat = 20
 
     // MARK: - Line Spacing
-    static let lineSpacing: CGFloat = 3
+    static let lineSpacing: CGFloat = 0
 
     /// Desired line height = font natural height + lineSpacing
     static var editorLineHeight: CGFloat {
@@ -62,7 +62,7 @@ enum Theme {
 
     static let textColor = NSColor(name: "themeText") { appearance in
         appearance.isDark
-            ? NSColor(red: 0.878, green: 0.878, blue: 0.878, alpha: 1)
+            ? NSColor(red: 0.95, green: 0.95, blue: 0.95, alpha: 1)
             : NSColor(red: 0.133, green: 0.133, blue: 0.133, alpha: 1)
     }
 

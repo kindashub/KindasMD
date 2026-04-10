@@ -150,11 +150,11 @@ struct ContentView: View {
     let fileURL: URL?
     @State private var mode: ViewMode
     @State private var positionSyncID = UUID().uuidString
-    @AppStorage("editorFontSize") private var fontSize: Double = 16
+    @AppStorage("editorFontSize") private var fontSize: Double = 12
     /// Box character palette (⌘⌥B / toolbar). Separate from MASTER strip.
-    @AppStorage("kindasBlueprintStripVisible") private var boxStripVisible = true
+    @State private var boxStripVisible = false
     /// MASTER file picker + scratch editor (⌘⌥M / toolbar). Box strip stays at top; MASTER sits at bottom of column.
-    @AppStorage("kindasMasterStripVisible") private var masterStripVisible = true
+    @State private var masterStripVisible = false
     @State private var boxCells: [String] = KindasBoxGridConfig.defaultCells()
     @StateObject private var masterFolder = MasterFolderModel()
     @StateObject private var findState = FindState()
@@ -162,24 +162,13 @@ struct ContentView: View {
     @StateObject private var outlineState = OutlineState()
     @StateObject private var textEditBrowser = TextEditBrowserModel()
     @StateObject private var scrollRelay = ScrollSyncRelay()
-    @AppStorage("textEditBrowserVisible") private var showTextEditBrowser = false
+    @State private var showTextEditBrowser = false
 
     init(document: Binding<MarkdownDocument>, fileURL: URL? = nil) {
         self._document = document
         self.fileURL = fileURL
-        // Restore last mode from disk; full Preview on open hides Kindas strip — force Edit in that case only.
-        let stored = UserDefaults.standard.string(forKey: "viewMode").flatMap { ViewMode(rawValue: $0) }
-        let initialMode: ViewMode
-        if fileURL != nil {
-            if let s = stored, s == .edit || s == .split {
-                initialMode = s
-            } else {
-                initialMode = .edit
-            }
-        } else {
-            initialMode = stored ?? .edit
-        }
-        self._mode = State(initialValue: initialMode)
+        // Always start in Edit mode for a clean slate on every document
+        self._mode = State(initialValue: .edit)
         DiagnosticLog.log("Document opened: \(fileURL?.lastPathComponent ?? "untitled")")
     }
 
@@ -209,9 +198,6 @@ struct ContentView: View {
 
     private var contentWithEventHandlers: some View {
         contentWithModifiers
-            .onChange(of: mode) { _, newMode in
-                UserDefaults.standard.set(newMode.rawValue, forKey: "viewMode")
-            }
             .onChange(of: outlineState.isVisible) { _, newValue in
                 // Mutual exclusion: when outline shows, hide textEdit browser
                 if newValue {
