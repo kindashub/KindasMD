@@ -1,5 +1,17 @@
 import Foundation
 
+/// Line-number-based scroll position storage for mode-switch persistence.
+/// This is stable regardless of layout state (line 200 is always line 200).
+enum ScrollPositionStore {
+    struct Position {
+        let firstVisibleLine: Int
+        let fractionalLine: CGFloat
+    }
+    private static var positions: [String: Position] = [:]
+    static func save(_ pos: Position, for id: String) { positions[id] = pos }
+    static func restore(for id: String) -> Position? { positions[id] }
+}
+
 struct PreviewSourceAnchor: Hashable {
     let startLine: Int
     let startColumn: Int

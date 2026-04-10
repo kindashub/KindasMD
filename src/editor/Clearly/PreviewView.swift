@@ -71,9 +71,12 @@ struct PreviewView: NSViewRepresentable {
             context.coordinator.scrollEchoDeadUntil = 0
         }
 
-        // Leaving full preview: snapshot live DOM scroll into the bridge (authoritative vs stale echo-blocked history).
+        // Leaving full preview: save line-based position for edit mode restore.
         if priorLast == .preview && (mode == .edit || mode == .split) {
-            Self.snapshotWebScrollFractionToBridge(webView: webView, positionSyncID: positionSyncID)
+            // Estimate line number from scroll fraction (honest approximation, no source maps).
+            let totalLines = markdown.components(separatedBy: "\n").count
+            let estimatedLine = Int(Double(totalLines) * min(max(context.coordinator.scrollFraction, 0), 1))
+            ScrollPositionStore.save(.init(firstVisibleLine: estimatedLine, fractionalLine: 0), for: positionSyncID)
         }
 
         if mode == .split, let lead = scrollRelay.takePreviewLead() {
@@ -490,10 +493,8 @@ struct PreviewView: NSViewRepresentable {
             if let sy = body["scrollY"] as? NSNumber, let ms = body["maxScroll"] as? NSNumber {
                 let maxScroll = max(1.0, ms.doubleValue)
                 f = min(max(sy.doubleValue / maxScroll, 0), 1)
-                DiagnosticLog.log("SCROLL-DIAG scrollSync: sy=\(String(format:"%.1f",sy.doubleValue)) ms=\(String(format:"%.1f",ms.doubleValue)) maxScroll=\(String(format:"%.1f",maxScroll)) f=\(String(format:"%.4f",f)) mode=\(self.mode.rawValue) echoBlocked=\(echoBlocked)")
             } else if let legacy = body["fraction"] as? NSNumber {
                 f = min(max(legacy.doubleValue, 0), 1)
-                DiagnosticLog.log("SCROLL-DIAG scrollSync(legacy): f=\(String(format:"%.4f",f)) mode=\(self.mode.rawValue) echoBlocked=\(echoBlocked)")
             } else {
                 return
             }

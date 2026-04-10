@@ -122,9 +122,7 @@ struct EditorView: NSViewRepresentable {
             guard let coordinator else { return }
             guard coordinator.parent.mode == .split else { return }
             guard let scrollView = coordinator.scrollViewRef else { return }
-            DiagnosticLog.log("SCROLL-DIAG preview→editor handler: f=\(String(format:"%.4f",fraction))")
-            coordinator.notePreviewFedEditorScroll(anchorFraction: fraction)
-            coordinator.applyProgrammaticScroll(scrollView, fraction: fraction, drivenByPreviewSync: true)
+            coordinator.applyProgrammaticScroll(scrollView, fraction: fraction)
         }
 
         DiagnosticLog.log("makeNSView: EditorView ready")
@@ -146,19 +144,30 @@ struct EditorView: NSViewRepresentable {
 
         let priorLast = context.coordinator.lastMode
 
-        // Restore editor scroll when leaving preview-only (edit or split).
+        // Leaving edit mode: capture line-based position for later restore.
+        if priorLast == .edit, (mode == .preview || mode == .split) {
+            if let pos = context.coordinator.captureFirstVisibleLine() {
+                ScrollPositionStore.save(pos, for: positionSyncID)
+            }
+        }
+
+        // Entering edit mode from preview: restore line-based position.
         if (mode == .edit || mode == .split), priorLast == .preview {
             findState?.activeMode = .edit
-            context.coordinator.scheduleScrollRestoreLeavingPreview(scrollView) {
-                if findState?.isVisible == true {
-                    context.coordinator.performFind()
+            DispatchQueue.main.async { [weak coordinator = context.coordinator] in
+                guard let coordinator else { return }
+                if let pos = ScrollPositionStore.restore(for: self.positionSyncID) {
+                    coordinator.restoreToLine(pos)
+                }
+                if self.findState?.isVisible == true {
+                    coordinator.performFind()
                 }
             }
         }
 
-        // Preview → editor scroll is applied synchronously via `ScrollBridge.setPreviewToEditorScrollHandler` from WK (no SwiftUI relay delay).
-        if priorLast == nil && (mode == .edit || mode == .split) {
-            // ZStack ↔ HSplit swap creates a new NSScrollView — pixel scroll is lost; re-apply shared fraction.
+        // Split mode: use ScrollBridge for live sync (fraction-based is fine here).
+        // ZStack ↔ HSplit swap creates a new NSScrollView — restore shared fraction.
+        if priorLast == nil && mode == .split {
             context.coordinator.applyProgrammaticScroll(scrollView, fraction: ScrollBridge.sharedFraction(for: positionSyncID))
         }
 
@@ -263,14 +272,7 @@ struct EditorView: NSViewRepresentable {
         /// cleared by the time the async block runs. This counter stays > 0 until an
         /// async cleanup pops it, so the async compute actually observes it.
         var programmaticScrollDepth: Int = 0
-        /// Ignore `computeScrollFraction` briefly after remote/programmatic scroll (avoids bad metrics & feedback).
-        private var suppressOutgoingScrollUntil: TimeInterval = 0
-        /// Cancels stale deferred scroll if mode flips again before the run loop runs.
-        private var scrollRestoreGeneration: UInt64 = 0
         private var lastRelayedToPreview: Double = -1
-        /// After WK drives the editor scroll, AppKit can briefly report a bogus near-bottom ratio; ignore those samples until this time.
-        private var previewFedEditorEchoIgnoreUntil: TimeInterval = 0
-        private var previewFedEditorAnchorFraction: Double = 0
 
         // Find state tracking
         var matchRanges: [NSRange] = []
@@ -281,12 +283,7 @@ struct EditorView: NSViewRepresentable {
             self.parent = parent
         }
 
-        func notePreviewFedEditorScroll(anchorFraction: Double) {
-            previewFedEditorAnchorFraction = anchorFraction
-            previewFedEditorEchoIgnoreUntil = CACurrentMediaTime() + 0.55
-        }
-
-        func applyProgrammaticScroll(_ scrollView: NSScrollView, fraction: Double, drivenByPreviewSync: Bool = false) {
+        func applyProgrammaticScroll(_ scrollView: NSScrollView, fraction: Double) {
             // Use document-visible rect (not clipView.bounds alone): NSTextView + insets/contentInsets make
             // bounds.origin.y vs frame.height mismatch WebKit’s fraction and can clamp to ~1 at the real top.
             //
@@ -300,15 +297,13 @@ struct EditorView: NSViewRepresentable {
             //   2. Set `suppressOutgoingScrollUntil` BEFORE `setBoundsOrigin`, not after,
             //      so even notifications queued during the synchronous bounds change see
             //      the fresh deadline when they eventually run.
-            let now = CACurrentMediaTime()
-            suppressOutgoingScrollUntil = now + (drivenByPreviewSync ? 0.55 : 0.25)
+            // Cross-runloop guard: bump a counter that stays elevated across the runloop so
+            // async `computeScrollFraction` blocks queued from the synchronous bounds change
+            // observe programmaticScrollDepth > 0 and skip echo handling.
             programmaticScrollDepth += 1
             isApplyingRemoteScroll = true
             defer {
                 isApplyingRemoteScroll = false
-                // Keep the depth counter elevated across at least one runloop turn so
-                // any async `computeScrollFraction` blocks queued from the synchronous
-                // bounds-change notification still observe programmaticScrollDepth > 0.
                 DispatchQueue.main.async { [weak self] in
                     guard let self else { return }
                     if self.programmaticScrollDepth > 0 {
@@ -330,53 +325,44 @@ struct EditorView: NSViewRepresentable {
             let vh = vis.height
             let maxScroll = max(CGFloat(1), docH - vh)
             let targetMinY = clamped * maxScroll
-            DiagnosticLog.log("SCROLL-DIAG applyProg: f=\(String(format:"%.4f",fraction)) docH=\(String(format:"%.0f",docH)) vh=\(String(format:"%.0f",vh)) maxScroll=\(String(format:"%.0f",maxScroll)) targetY=\(String(format:"%.0f",targetMinY)) driven=\(drivenByPreviewSync)")
             scrollView.contentView.setBoundsOrigin(NSPoint(x: 0, y: targetMinY))
             scrollView.reflectScrolledClipView(scrollView.contentView)
-            // Refresh the deadline AFTER the bounds actually changed as well, so any late
-            // follow-up notifications (e.g. from `reflectScrolledClipView`) get the full window.
-            suppressOutgoingScrollUntil = CACurrentMediaTime() + (drivenByPreviewSync ? 0.55 : 0.25)
-        }
-
-        /// After full preview, `PreviewView` snapshots WK scroll into `ScrollBridge` asynchronously; we lay out the text view and apply twice on the next main ticks so the bridge (and NSTextView metrics) can settle.
-        func scheduleScrollRestoreLeavingPreview(_ scrollView: NSScrollView, completion: (() -> Void)? = nil) {
-            scrollRestoreGeneration += 1
-            let gen = scrollRestoreGeneration
-            let syncID = parent.positionSyncID
-            weak var weakScroll = scrollView
-
-            DispatchQueue.main.async { [weak self] in
-                guard let self else { return }
-                guard gen == self.scrollRestoreGeneration else { return }
-                guard let scrollView = weakScroll else { return }
-                scrollView.layoutSubtreeIfNeeded()
-                if let tv = scrollView.documentView as? NSTextView {
-                    tv.layoutSubtreeIfNeeded()
-                    if let tc = tv.textContainer {
-                        tv.layoutManager?.ensureLayout(for: tc)
-                    }
-                }
-                let f = ScrollBridge.sharedFraction(for: syncID)
-                self.applyProgrammaticScroll(scrollView, fraction: f)
-                DispatchQueue.main.async { [weak self] in
-                    guard let self else { return }
-                    guard gen == self.scrollRestoreGeneration else { return }
-                    guard let scrollView = weakScroll else { return }
-                    scrollView.layoutSubtreeIfNeeded()
-                    if let tv = scrollView.documentView as? NSTextView, let tc = tv.textContainer {
-                        tv.layoutManager?.ensureLayout(for: tc)
-                    }
-                    let f2 = ScrollBridge.sharedFraction(for: syncID)
-                    self.applyProgrammaticScroll(scrollView, fraction: f2)
-                    completion?()
-                }
-            }
         }
 
         func scrollToHeading(_ range: NSRange) {
             guard let textView else { return }
             textView.scrollRangeToVisible(range)
             textView.showFindIndicator(for: range)
+        }
+
+        // MARK: - Line-based scroll position (for mode-switch persistence)
+
+        /// Capture the first visible line number when leaving edit mode.
+        func captureFirstVisibleLine() -> ScrollPositionStore.Position? {
+            guard let textView else { return nil }
+            guard let layoutManager = textView.layoutManager,
+                  let textContainer = textView.textContainer else { return nil }
+            let glyphIndex = layoutManager.glyphIndex(for: textView.visibleRect.origin, in: textContainer)
+            let charIndex = layoutManager.characterIndexForGlyph(at: glyphIndex)
+            let prefix = (textView.string as NSString).substring(to: min(charIndex, textView.string.count))
+            let lineNumber = prefix.components(separatedBy: "\n").count - 1
+            return .init(firstVisibleLine: lineNumber, fractionalLine: 0)
+        }
+
+        /// Restore scroll to a specific line number when entering edit mode.
+        func restoreToLine(_ position: ScrollPositionStore.Position) {
+            guard let textView else { return }
+            guard let layoutManager = textView.layoutManager,
+                  let textContainer = textView.textContainer else { return }
+            let lines = textView.string.components(separatedBy: "\n")
+            let targetLine = min(position.firstVisibleLine, max(0, lines.count - 1))
+            let charIndex = lines.prefix(targetLine).reduce(0) { $0 + $1.count + 1 }
+            let safeIndex = min(charIndex, max(0, textView.string.count - 1))
+            let glyphRange = layoutManager.glyphRange(
+                forCharacterRange: NSRange(location: safeIndex, length: 0),
+                actualCharacterRange: nil)
+            let rect = layoutManager.boundingRect(forGlyphRange: glyphRange, in: textContainer)
+            textView.scroll(NSPoint(x: 0, y: rect.origin.y))
         }
 
         func observeFindState(_ state: FindState) {
@@ -477,7 +463,6 @@ struct EditorView: NSViewRepresentable {
             // its cross-runloop cleanup window), don't even enqueue the async compute.
             // This eliminates the preview→editor echo at the source.
             if isApplyingRemoteScroll || programmaticScrollDepth > 0 { return }
-            if CACurrentMediaTime() < suppressOutgoingScrollUntil { return }
 
             // Defer layout manager queries to the next run loop iteration.
             // boundsDidChangeNotification fires synchronously during layout passes;
@@ -494,7 +479,6 @@ struct EditorView: NSViewRepresentable {
             // documentVisibleRect metrics. Writing those fractions would overwrite preview-driven ScrollBridge values.
             guard parent.mode == .edit || parent.mode == .split else { return }
             let now = CACurrentMediaTime()
-            guard now >= suppressOutgoingScrollUntil else { return }
             guard let scrollView = clipView.enclosingScrollView else { return }
             guard now - lastScrollTime >= 0.016 else { return }
             lastScrollTime = now
@@ -513,15 +497,6 @@ struct EditorView: NSViewRepresentable {
             let maxScroll = max(CGFloat(1), docH - vh)
             let raw = Double(vis.minY / maxScroll)
             let f = min(max(raw, 0), 1)
-
-            let bridgeTruth = ScrollBridge.sharedFraction(for: parent.positionSyncID)
-            DiagnosticLog.log("SCROLL-DIAG computeFrac: f=\(String(format:"%.4f",f)) bridgeTruth=\(String(format:"%.4f",bridgeTruth)) docH=\(String(format:"%.0f",docH)) vh=\(String(format:"%.0f",vh)) minY=\(String(format:"%.0f",vis.minY)) mode=\(parent.mode.rawValue)")
-            if parent.mode == .split, now < previewFedEditorEchoIgnoreUntil {
-                if f >= 0.88, f > bridgeTruth + 0.28, bridgeTruth < 0.68 {
-                    DiagnosticLog.log("SCROLL-DIAG computeFrac: dropped by echo heuristic")
-                    return
-                }
-            }
 
             // Never post `clearlySharedScrollFractionChanged` from here. In split, `ScrollSyncRelay.proposePreviewScroll`
             // is the sole editor→preview path; posting notify:.editor duplicated that and let bogus NSTextView ratios
