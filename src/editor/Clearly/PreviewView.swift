@@ -155,6 +155,7 @@ struct PreviewView: NSViewRepresentable {
     }
 
     static func dismantleNSView(_ webView: WKWebView, coordinator: Coordinator) {
+        coordinator.webView = nil
         webView.configuration.userContentController.removeScriptMessageHandler(forName: "linkClicked")
         webView.configuration.userContentController.removeScriptMessageHandler(forName: "scrollSync")
         webView.configuration.userContentController.removeScriptMessageHandler(forName: "copyToClipboard", contentWorld: Self.copyButtonContentWorld)
@@ -290,6 +291,7 @@ struct PreviewView: NSViewRepresentable {
         }
 
         func scrollToHeading(anchor: PreviewSourceAnchor) {
+            guard let webView = self.webView else { return }
             let js = """
             (function() {
                 var headings = document.querySelectorAll('h1,h2,h3,h4,h5,h6');
@@ -308,11 +310,11 @@ struct PreviewView: NSViewRepresentable {
                 }
             })();
             """
-            webView?.evaluateJavaScript(js)
+            webView.evaluateJavaScript(js)
         }
 
         func performFind(query: String) {
-            guard let webView, didInitialLoad else { return }
+            guard let webView = self.webView, didInitialLoad else { return }
             guard !query.isEmpty else {
                 clearFindHighlights()
                 return
@@ -390,6 +392,7 @@ struct PreviewView: NSViewRepresentable {
         }
 
         private func navigateToMatch(_ index: Int) {
+            guard let webView = self.webView else { return }
             let js = """
             (function() {
                 var marks = document.querySelectorAll('mark.clearly-find');
@@ -400,7 +403,7 @@ struct PreviewView: NSViewRepresentable {
                 }
             })();
             """
-            webView?.evaluateJavaScript(js)
+            webView.evaluateJavaScript(js)
             DispatchQueue.main.async { [weak self] in
                 guard self?.findState?.activeMode == .preview else { return }
                 self?.findState?.currentIndex = index + 1
@@ -408,6 +411,7 @@ struct PreviewView: NSViewRepresentable {
         }
 
         private func clearFindHighlights() {
+            guard let webView = self.webView else { return }
             let js = """
             (function() {
                 document.querySelectorAll('mark.clearly-find').forEach(function(m) {
@@ -417,7 +421,7 @@ struct PreviewView: NSViewRepresentable {
                 });
             })();
             """
-            webView?.evaluateJavaScript(js)
+            webView.evaluateJavaScript(js)
             matchCount = 0
             currentMatchIdx = 0
             DispatchQueue.main.async { [weak self] in
@@ -428,10 +432,11 @@ struct PreviewView: NSViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            guard let coordinatorWebView = self.webView else { return }
             if !didInitialLoad {
                 didInitialLoad = true
             }
-            webView.alphaValue = 1
+            coordinatorWebView.alphaValue = 1
             // Restore scroll position after HTML reload (stable max scroll)
             if scrollFraction > 0.001 {
                 let c = min(max(scrollFraction, 0), 1)
@@ -443,7 +448,7 @@ struct PreviewView: NSViewRepresentable {
                     window.scrollTo(0, \(c) * ms);
                 })();
                 """
-                webView.evaluateJavaScript(js)
+                coordinatorWebView.evaluateJavaScript(js)
             }
             // Re-apply find highlights after page reload
             if let query = findState?.query,
