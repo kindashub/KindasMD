@@ -173,18 +173,21 @@ struct KindasMDEditorApp: App {
     @State private var scratchpadManager = ScratchpadManager.shared
 
     init() {
-        Self.migrateKindasStripPrefsIfNeeded()
+        Self.migrateEditorFontSizeIfNeeded()
         BundledFontRegistration.registerBundledFonts()
         DiagnosticLog.trimIfNeeded()
         DiagnosticLog.log("App launched")
     }
 
-    /// First launch after split: copy legacy single-strip visibility to `kindasMasterStripVisible` so "strip off" stays both off.
-    private static func migrateKindasStripPrefsIfNeeded() {
+    /// Migrate editor font size from old default (16) to new default (12).
+    /// If user has explicitly set a non-16 value, preserve it.
+    private static func migrateEditorFontSizeIfNeeded() {
         let d = UserDefaults.standard
-        guard d.object(forKey: "kindasMasterStripVisible") == nil else { return }
-        let legacyBox = d.object(forKey: "kindasBlueprintStripVisible") as? Bool ?? true
-        d.set(legacyBox, forKey: "kindasMasterStripVisible")
+        let stored = d.double(forKey: "editorFontSize")
+        // Only migrate if the stored value is exactly the old default (16)
+        if stored == 16.0 {
+            d.removeObject(forKey: "editorFontSize")
+        }
     }
 
     private var resolvedColorScheme: ColorScheme? {
@@ -401,7 +404,7 @@ struct ViewModeCommands: View {
 // MARK: - Font Size Commands
 
 struct FontSizeCommands: View {
-    @AppStorage("editorFontSize") private var fontSize: Double = 16
+    @AppStorage("editorFontSize") private var fontSize: Double = 12
 
     var body: some View {
         Button("Increase Font Size") {
@@ -421,7 +424,7 @@ struct FontSizeCommands: View {
 struct ExportPDFCommand: View {
     @FocusedValue(\.documentText) var text
     @FocusedValue(\.documentFileURL) var fileURL
-    @AppStorage("editorFontSize") private var fontSize: Double = 16
+    @AppStorage("editorFontSize") private var fontSize: Double = 12
 
     var body: some View {
         Button("Export as PDF…") {
@@ -436,7 +439,7 @@ struct ExportPDFCommand: View {
 struct PrintCommand: View {
     @FocusedValue(\.documentText) var text
     @FocusedValue(\.documentFileURL) var fileURL
-    @AppStorage("editorFontSize") private var fontSize: Double = 16
+    @AppStorage("editorFontSize") private var fontSize: Double = 12
 
     var body: some View {
         Button("Print…") {

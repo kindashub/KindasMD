@@ -3,7 +3,7 @@ import KeyboardShortcuts
 import ServiceManagement
 
 struct SettingsView: View {
-    @AppStorage("editorFontSize") private var fontSize: Double = 16
+    @AppStorage("editorFontSize") private var fontSize: Double = 12
     @AppStorage("themePreference") private var themePreference = "system"
 
     var body: some View {
