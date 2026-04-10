@@ -119,32 +119,6 @@ struct HiddenToolbarBackground: ViewModifier {
     }
 }
 
-// MARK: - Prove which binary is running (Dock vs stray Xcode instance)
-
-/// Sets `NSWindow.subtitle` so you can see build + whether this is the MBP-Mods install or a DerivedData run.
-struct WindowKindasBuildSubtitle: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSView {
-        NSView(frame: .zero)
-    }
-
-    func updateNSView(_ nsView: NSView, context: Context) {
-        let ver = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
-        let bundlePath = Bundle.main.bundlePath
-        let origin: String = {
-            if bundlePath.contains("/MBP-Mods/KindasMD/KindasMDEditor.app") {
-                return "MBP-Mods install"
-            }
-            if bundlePath.contains("DerivedData") {
-                return "⚠️ DerivedData — quit this; use Dock + KindasMD/KindasMDEditor.app"
-            }
-            return (bundlePath as NSString).lastPathComponent
-        }()
-        DispatchQueue.main.async {
-            nsView.window?.subtitle = "KindasMD build \(ver) · \(origin)"
-        }
-    }
-}
-
 struct ContentView: View {
     @Binding var document: MarkdownDocument
     let fileURL: URL?
@@ -189,7 +163,6 @@ struct ContentView: View {
             .frame(minWidth: 500, minHeight: 400)
             .background(Theme.backgroundColorSwiftUI)
             .modifier(HiddenToolbarBackground())
-            .background(WindowKindasBuildSubtitle())
             .background(WindowFrameSaver(fileURL: fileURL))
             .animation(.easeInOut(duration: 0.15), value: mode)
             .animation(.easeInOut(duration: 0.2), value: boxStripVisible)
@@ -210,7 +183,6 @@ struct ContentView: View {
                     outlineState.isVisible = false
                 }
             }
-            .toolbar { toolbarContent }
             .onReceive(NotificationCenter.default.publisher(for: .clearlyToggleBlueprint), perform: toggleBlueprint)
             .onReceive(NotificationCenter.default.publisher(for: .clearlyToggleMasterStrip), perform: toggleMasterStrip)
             .focusedSceneValue(\.viewMode, $mode)
@@ -228,10 +200,66 @@ struct ContentView: View {
             .onChange(of: masterStripVisible, perform: handleMasterStripVisibilityChange)
     }
 
+    // MARK: - Custom Control Bar (replaces native toolbar)
+
+    private var controlBarContent: some View {
+        HStack(spacing: 6) {
+            // Mode picker (compact segmented)
+            Picker("Mode", selection: $mode) {
+                Image(systemName: "pencil").tag(ViewMode.edit)
+                Image(systemName: "rectangle.split.2x1").tag(ViewMode.split)
+                Image(systemName: "eye").tag(ViewMode.preview)
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 100)
+            .controlSize(.small)
+
+            Divider().frame(height: 16)
+
+            // Quick Copy buttons (currently in QuickCopyButtonsView)
+            QuickCopyButtonsView()
+
+            Spacer()
+
+            // Toggle buttons -- flat, plain, small
+            controlBarButton("square.grid.3x3", active: boxStripVisible) {
+                withAnimation(.easeInOut(duration: 0.2)) { boxStripVisible.toggle() }
+            }
+            controlBarButton("doc.text", active: masterStripVisible) {
+                withAnimation(.easeInOut(duration: 0.2)) { masterStripVisible.toggle() }
+            }
+            controlBarButton("folder", active: showTextEditBrowser) {
+                withAnimation(.easeInOut(duration: 0.2)) { showTextEditBrowser.toggle() }
+            }
+            controlBarButton("list.bullet.indent", active: outlineState.isVisible) {
+                withAnimation(.easeInOut(duration: 0.2)) { outlineState.toggle() }
+            }
+            controlBarButton("magnifyingglass", active: findState.isVisible) {
+                findState.present()
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(Theme.backgroundColorSwiftUI)
+    }
+
+    private func controlBarButton(_ icon: String, active: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: 11))
+                .foregroundStyle(active ? Color.accentColor : .secondary)
+        }
+        .buttonStyle(.plain)
+        .frame(width: 22, height: 20)
+        .contentShape(Rectangle())
+    }
+
     @ViewBuilder
     private var mainContent: some View {
         HStack(spacing: 0) {
             VStack(spacing: 0) {
+                controlBarContent
+                Divider()
                 if findState.isVisible {
                     FindBarView(findState: findState)
                     Divider()
@@ -317,83 +345,6 @@ struct ContentView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-        }
-    }
-
-    @ToolbarContentBuilder
-    private var toolbarContent: some ToolbarContent {
-        ToolbarItem(placement: .principal) {
-            Picker("Mode", selection: $mode) {
-                Image(systemName: "pencil")
-                    .tag(ViewMode.edit)
-                Image(systemName: "rectangle.split.2x1")
-                    .tag(ViewMode.split)
-                Image(systemName: "eye")
-                    .tag(ViewMode.preview)
-            }
-            .pickerStyle(.segmented)
-            .frame(width: 152)
-            .help("Editor / Split / Preview (⌘1 / ⌘3 / ⌘2)")
-        }
-        ToolbarItem(placement: .automatic) {
-            QuickCopyButtonsView()
-        }
-        ToolbarItem(placement: .automatic) {
-            Button {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    boxStripVisible.toggle()
-                }
-            } label: {
-                Label("Characters", systemImage: "square.grid.3x3")
-                    .symbolVariant(boxStripVisible ? .fill : .none)
-                    .foregroundStyle(boxStripVisible ? Color.accentColor : .secondary)
-            }
-            .help("Toggle box character palette (⌘⌥B)")
-        }
-        ToolbarItem(placement: .automatic) {
-            Button {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    masterStripVisible.toggle()
-                }
-            } label: {
-                Label("MASTER", systemImage: "doc.text")
-                    .symbolVariant(masterStripVisible ? .fill : .none)
-                    .foregroundStyle(masterStripVisible ? Color.accentColor : .secondary)
-            }
-            .help("Toggle MASTER notes strip (⌘⌥M)")
-        }
-        ToolbarItem(placement: .automatic) {
-            Button {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    // Toggle TextEdit browser (mutually exclusive with outline)
-                    showTextEditBrowser.toggle()
-                }
-            } label: {
-                Image(systemName: "folder")
-                    .symbolVariant(showTextEditBrowser ? .fill : .none)
-                    .foregroundStyle(showTextEditBrowser ? Color.accentColor : .secondary)
-            }
-            .help("TextMD File Browser")
-        }
-        ToolbarItem(placement: .automatic) {
-            Button {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    outlineState.toggle()
-                }
-            } label: {
-                Image(systemName: "list.bullet.indent")
-                    .symbolVariant(outlineState.isVisible ? .fill : .none)
-                    .foregroundStyle(outlineState.isVisible ? Color.accentColor : .secondary)
-            }
-            .help("Document Outline (Shift+Cmd+O)")
-        }
-        ToolbarItem(placement: .automatic) {
-            Button {
-                findState.present()
-            } label: {
-                Image(systemName: "magnifyingglass")
-            }
-            .help("Find (Cmd+F)")
         }
     }
 
