@@ -18,7 +18,7 @@ final class ScratchpadTextView: PersistentTextCheckingTextView {
 
 struct ScratchpadEditorView: NSViewRepresentable {
     @Binding var text: String
-    var fontSize: CGFloat = 12
+    var fontSize: CGFloat = 16
     var onSave: (() -> Void)?
     @Environment(\.colorScheme) private var colorScheme
 

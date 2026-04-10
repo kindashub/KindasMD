@@ -5,7 +5,7 @@ import os
 
 struct EditorView: NSViewRepresentable {
     @Binding var text: String
-    var fontSize: CGFloat = 12
+    var fontSize: CGFloat = 16
     var fileURL: URL?
     var mode: ViewMode
     var positionSyncID: String
