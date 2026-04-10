@@ -99,20 +99,12 @@ final class TextEditBrowserModel: ObservableObject {
         setupWatch(path: dir.path)
     }
 
+    /// Callback for when a file is selected. The caller (ContentView) handles the actual file switching.
+    var onFileSelected: ((URL) -> Void)?
+
     func openFile(_ file: TextEditFile) {
-        // Use NSDocumentController to open in a new window (per macOS DocumentGroup convention)
-        Task { @MainActor in
-            do {
-                _ = try await NSDocumentController.shared.openDocument(
-                    withContentsOf: file.url,
-                    display: true
-                )
-            } catch {
-                DiagnosticLog.log("TextEditBrowser: openDocument failed: \(error)")
-                // Fallback: NSWorkspace
-                NSWorkspace.shared.open(file.url)
-            }
-        }
+        // Notify the parent view to handle the file switch in-place
+        onFileSelected?(file.url)
     }
 
     // MARK: - File Watching
@@ -158,6 +150,14 @@ final class TextEditBrowserModel: ObservableObject {
 
 struct TextEditBrowserView: View {
     @ObservedObject var model: TextEditBrowserModel
+    var onFileSelected: ((URL) -> Void)?
+
+    init(model: TextEditBrowserModel, onFileSelected: ((URL) -> Void)? = nil) {
+        self.model = model
+        self.onFileSelected = onFileSelected
+        // Wire the callback to the model
+        model.onFileSelected = onFileSelected
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -186,7 +186,8 @@ struct TextEditBrowserView: View {
                     LazyVStack(alignment: .leading, spacing: 0) {
                         ForEach(model.files) { file in
                             TextEditFileRow(file: file) {
-                                model.openFile(file)
+                                // Direct callback - more reliable than going through model
+                                onFileSelected?(file.url)
                             }
                         }
                     }

@@ -137,13 +137,23 @@ struct ContentView: View {
     @StateObject private var textEditBrowser = TextEditBrowserModel()
     @StateObject private var scrollRelay = ScrollSyncRelay()
     @State private var showTextEditBrowser = false
+    /// Tracks the actively viewed file when switched via TextEdit browser (nil = using original DocumentGroup fileURL)
+    @State private var activeFileURL: URL?
+    /// Debounce timer for auto-saving to activeFileURL
+    @State private var autoSaveTimer: Timer?
 
     init(document: Binding<MarkdownDocument>, fileURL: URL? = nil) {
         self._document = document
         self.fileURL = fileURL
         // Always start in Edit mode for a clean slate on every document
         self._mode = State(initialValue: .edit)
+        self._activeFileURL = State(initialValue: nil)
         DiagnosticLog.log("Document opened: \(fileURL?.lastPathComponent ?? "untitled")")
+    }
+
+    /// The effective file URL - either the switched-to file or the original DocumentGroup file
+    private var effectiveFileURL: URL? {
+        activeFileURL ?? fileURL
     }
 
     private var wordCount: Int {
@@ -163,7 +173,7 @@ struct ContentView: View {
             .frame(minWidth: 500, minHeight: 400)
             .background(Theme.backgroundColorSwiftUI)
             .modifier(HiddenToolbarBackground())
-            .background(WindowFrameSaver(fileURL: fileURL))
+            .background(WindowFrameSaver(fileURL: effectiveFileURL))
             .animation(.easeInOut(duration: 0.15), value: mode)
             .animation(.easeInOut(duration: 0.2), value: boxStripVisible)
             .animation(.easeInOut(duration: 0.2), value: masterStripVisible)
@@ -187,13 +197,13 @@ struct ContentView: View {
             .onReceive(NotificationCenter.default.publisher(for: .clearlyToggleMasterStrip), perform: toggleMasterStrip)
             .focusedSceneValue(\.viewMode, $mode)
             .focusedSceneValue(\.documentText, document.text)
-            .focusedSceneValue(\.documentFileURL, fileURL)
+            .focusedSceneValue(\.documentFileURL, effectiveFileURL)
             .focusedSceneValue(\.findState, findState)
             .focusedSceneValue(\.outlineState, outlineState)
             .onAppear(perform: onAppearHandler)
             .onDisappear(perform: onDisappearHandler)
             .onChange(of: boxCells, perform: saveBoxCells)
-            .onChange(of: fileURL) { _, newURL in
+            .onChange(of: effectiveFileURL) { _, newURL in
                 fileWatcher.watch(newURL, currentText: document.text)
             }
             .onChange(of: document.text, perform: handleDocumentTextChange)
@@ -285,7 +295,7 @@ struct ContentView: View {
                 OutlineView(outlineState: outlineState)
             } else if showTextEditBrowser {
                 Divider()
-                TextEditBrowserView(model: textEditBrowser)
+                TextEditBrowserView(model: textEditBrowser, onFileSelected: switchToFile)
             }
         }
     }
@@ -326,9 +336,9 @@ struct ContentView: View {
                     // ~40% default editor width. Avoid `.layoutPriority` on preview — it starves the editor.
                     let editorIdealWidth = max(260, w * 0.40)
                     HSplitView {
-                        EditorView(text: $document.text, fontSize: CGFloat(fontSize), fileURL: fileURL, mode: mode, positionSyncID: positionSyncID, scrollRelay: scrollRelay, findState: findState, outlineState: outlineState)
+                        EditorView(text: $document.text, fontSize: CGFloat(fontSize), fileURL: effectiveFileURL, mode: mode, positionSyncID: positionSyncID, scrollRelay: scrollRelay, findState: findState, outlineState: outlineState)
                             .frame(minWidth: 220, idealWidth: editorIdealWidth, maxWidth: .infinity)
-                        PreviewView(markdown: document.text, fontSize: CGFloat(fontSize), mode: mode, positionSyncID: positionSyncID, scrollRelay: scrollRelay, fileURL: fileURL, findState: findState, outlineState: outlineState)
+                        PreviewView(markdown: document.text, fontSize: CGFloat(fontSize), mode: mode, positionSyncID: positionSyncID, scrollRelay: scrollRelay, fileURL: effectiveFileURL, findState: findState, outlineState: outlineState)
                             .frame(minWidth: 220, maxWidth: .infinity)
                     }
                 }
@@ -336,10 +346,10 @@ struct ContentView: View {
             } else {
                 ZStack {
                     // Preview first so `updateNSView` tends to run before Editor on mode changes — WK snapshot can commit before editor restores scroll.
-                    PreviewView(markdown: document.text, fontSize: CGFloat(fontSize), mode: mode, positionSyncID: positionSyncID, scrollRelay: scrollRelay, fileURL: fileURL, findState: findState, outlineState: outlineState)
+                    PreviewView(markdown: document.text, fontSize: CGFloat(fontSize), mode: mode, positionSyncID: positionSyncID, scrollRelay: scrollRelay, fileURL: effectiveFileURL, findState: findState, outlineState: outlineState)
                         .opacity(mode == .preview ? 1 : 0)
                         .allowsHitTesting(mode == .preview)
-                    EditorView(text: $document.text, fontSize: CGFloat(fontSize), fileURL: fileURL, mode: mode, positionSyncID: positionSyncID, scrollRelay: scrollRelay, findState: findState, outlineState: outlineState)
+                    EditorView(text: $document.text, fontSize: CGFloat(fontSize), fileURL: effectiveFileURL, mode: mode, positionSyncID: positionSyncID, scrollRelay: scrollRelay, findState: findState, outlineState: outlineState)
                         .opacity(mode == .edit ? 1 : 0)
                         .allowsHitTesting(mode == .edit)
                 }
@@ -387,7 +397,7 @@ struct ContentView: View {
         fileWatcher.onChange = { [self] newText in
             document.text = newText
         }
-        fileWatcher.watch(fileURL, currentText: document.text)
+        fileWatcher.watch(effectiveFileURL, currentText: document.text)
     }
 
     private func handleOnAppear() {
@@ -401,6 +411,8 @@ struct ContentView: View {
     private func handleDocumentTextChange(_ newText: String) {
         fileWatcher.updateCurrentText(newText)
         outlineState.parseHeadings(from: newText)
+        // Auto-save to active file if different from original DocumentGroup file
+        debouncedAutoSaveToActiveFile()
     }
 
     private func saveBoxCells(_ newValue: [String]) {
@@ -412,6 +424,76 @@ struct ContentView: View {
     private func handleMasterStripVisibilityChange(_ visible: Bool) {
         if visible {
             masterFolder.ensureFolderAndRefresh()
+        }
+    }
+
+    // MARK: - File Switching (TextEdit Browser)
+
+    /// Switches the current window to display a different file's content (soft switch within DocumentGroup)
+    private func switchToFile(_ url: URL) {
+        DiagnosticLog.log("TextEditBrowser: switching to file \(url.lastPathComponent)")
+
+        // 1. Auto-save current file if we have an active file
+        if let currentURL = effectiveFileURL, currentURL != url {
+            let currentText = document.text
+            do {
+                try currentText.write(to: currentURL, atomically: true, encoding: .utf8)
+                DiagnosticLog.log("TextEditBrowser: auto-saved current file before switch")
+            } catch {
+                DiagnosticLog.log("TextEditBrowser: failed to auto-save current file: \(error)")
+            }
+        }
+
+        // 2. Read new file content
+        guard let newContent = try? String(contentsOf: url, encoding: .utf8) else {
+            DiagnosticLog.log("TextEditBrowser: failed to read \(url.lastPathComponent)")
+            return
+        }
+
+        // 3. Switch content
+        document.text = newContent
+        activeFileURL = url
+
+        // 4. Clear undo to prevent undoing into wrong file's history
+        DispatchQueue.main.async {
+            NSApp.keyWindow?.firstResponder?.undoManager?.removeAllActions()
+        }
+
+        // 5. Update FileWatcher to watch the new file
+        fileWatcher.watch(url, currentText: newContent)
+
+        // 6. Update window title to reflect the new file
+        DispatchQueue.main.async {
+            NSApp.keyWindow?.title = url.lastPathComponent
+        }
+
+        // 7. Re-parse outline for the new content
+        outlineState.parseHeadings(from: newContent)
+
+        DiagnosticLog.log("TextEditBrowser: successfully switched to \(url.lastPathComponent)")
+    }
+
+    /// Debounced auto-save to activeFileURL (when different from DocumentGroup's original file)
+    /// Captures the text at the time of timer firing to avoid struct lifetime issues
+    private func debouncedAutoSaveToActiveFile() {
+        // Only auto-save if we have an active file that's different from the original
+        guard let activeURL = activeFileURL, activeURL != fileURL else { return }
+
+        // Cancel existing timer
+        autoSaveTimer?.invalidate()
+
+        // Capture the current text value immediately
+        let textToSave = document.text
+        let url = activeURL
+
+        // Create new timer with 1-second debounce
+        autoSaveTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { _ in
+            do {
+                try textToSave.write(to: url, atomically: true, encoding: .utf8)
+                DiagnosticLog.log("TextEditBrowser: auto-saved to active file \(url.lastPathComponent)")
+            } catch {
+                DiagnosticLog.log("TextEditBrowser: auto-save failed: \(error)")
+            }
         }
     }
 
