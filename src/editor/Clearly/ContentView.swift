@@ -160,7 +160,9 @@ struct ContentView: View {
     @StateObject private var findState = FindState()
     @StateObject private var fileWatcher = FileWatcher()
     @StateObject private var outlineState = OutlineState()
+    @StateObject private var textEditBrowser = TextEditBrowserModel()
     @StateObject private var scrollRelay = ScrollSyncRelay()
+    @AppStorage("textEditBrowserVisible") private var showTextEditBrowser = false
 
     init(document: Binding<MarkdownDocument>, fileURL: URL? = nil) {
         self._document = document
@@ -210,6 +212,18 @@ struct ContentView: View {
             .onChange(of: mode) { _, newMode in
                 UserDefaults.standard.set(newMode.rawValue, forKey: "viewMode")
             }
+            .onChange(of: outlineState.isVisible) { _, newValue in
+                // Mutual exclusion: when outline shows, hide textEdit browser
+                if newValue {
+                    showTextEditBrowser = false
+                }
+            }
+            .onChange(of: showTextEditBrowser) { _, newValue in
+                // Mutual exclusion: when textEdit browser shows, hide outline
+                if newValue {
+                    outlineState.isVisible = false
+                }
+            }
             .toolbar { toolbarContent }
             .onReceive(NotificationCenter.default.publisher(for: .clearlyToggleBlueprint), perform: toggleBlueprint)
             .onReceive(NotificationCenter.default.publisher(for: .clearlyToggleMasterStrip), perform: toggleMasterStrip)
@@ -255,6 +269,9 @@ struct ContentView: View {
             if outlineState.isVisible {
                 Divider()
                 OutlineView(outlineState: outlineState)
+            } else if showTextEditBrowser {
+                Divider()
+                TextEditBrowserView(model: textEditBrowser)
             }
         }
     }
@@ -333,6 +350,9 @@ struct ContentView: View {
             .help("Editor / Split / Preview (⌘1 / ⌘3 / ⌘2)")
         }
         ToolbarItem(placement: .automatic) {
+            QuickCopyButtonsView()
+        }
+        ToolbarItem(placement: .automatic) {
             Button {
                 withAnimation(.easeInOut(duration: 0.2)) {
                     boxStripVisible.toggle()
@@ -359,10 +379,25 @@ struct ContentView: View {
         ToolbarItem(placement: .automatic) {
             Button {
                 withAnimation(.easeInOut(duration: 0.2)) {
+                    // Toggle TextEdit browser (mutually exclusive with outline)
+                    showTextEditBrowser.toggle()
+                }
+            } label: {
+                Image(systemName: "folder")
+                    .symbolVariant(showTextEditBrowser ? .fill : .none)
+                    .foregroundStyle(showTextEditBrowser ? Color.accentColor : .secondary)
+            }
+            .help("TextMD File Browser")
+        }
+        ToolbarItem(placement: .automatic) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
                     outlineState.toggle()
                 }
             } label: {
                 Image(systemName: "list.bullet.indent")
+                    .symbolVariant(outlineState.isVisible ? .fill : .none)
+                    .foregroundStyle(outlineState.isVisible ? Color.accentColor : .secondary)
             }
             .help("Document Outline (Shift+Cmd+O)")
         }
