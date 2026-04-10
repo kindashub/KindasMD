@@ -1,0 +1,48 @@
+#!/bin/bash
+# KindasMD (Dock): create a new Markdown file in ~/TextMD and open in KindasMDEditor.
+# Uses `open -na` so a NEW process starts from MOD_DIR/KindasMDEditor.app (see comment at exec).
+# Use /bin/bash so Dock / Launch Services invoke this script reliably.
+#
+# Environment:
+#   TEXTEDIT_DEFAULT_DIR — folder for new files (default: $HOME/TextMD)
+#   TEXTEDIT_PREFIX      — first segment (default: TX)
+#   KINDASMD_EDITOR_APP  — override path to KindasMDEditor.app (optional)
+
+set -euo pipefail
+
+FOLDER="${TEXTEDIT_DEFAULT_DIR:-$HOME/TextMD}"
+STEM="${TEXTEDIT_PREFIX:-TX}"
+
+mkdir -p "$FOLDER"
+WDAY="$(LC_ALL=C date +%a | tr '[:lower:]' '[:upper:]')"
+FILENAME="${FOLDER}/${STEM}-${WDAY}$(date +%Y%m%d)-$(date +%H%M%S).md"
+touch "$FILENAME"
+
+# Resolve KindasMD module root (…/KindasMD) from this script (…/KindasMD/system/kindasmd).
+MOD_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+INSTALLED="${MOD_DIR}/app/KindasMDEditor.app"
+DERIVED_DEBUG="${MOD_DIR}/src/editor/build-dd/Build/Products/Debug/KindasMDEditor.app"
+LEGACY_HOME="${HOME}/MBP-Mods/KindasMD/KindasMDEditor.app"
+
+APP=""
+if [[ -n "${KINDASMD_EDITOR_APP:-}" && -d "${KINDASMD_EDITOR_APP}" ]]; then
+  APP="${KINDASMD_EDITOR_APP}"
+elif [[ -d "$INSTALLED" ]]; then
+  APP="$INSTALLED"
+elif [[ -d "$DERIVED_DEBUG" ]]; then
+  APP="$DERIVED_DEBUG"
+elif [[ -d "$LEGACY_HOME" ]]; then
+  APP="$LEGACY_HOME"
+fi
+
+if [[ -n "$APP" ]]; then
+  # CRITICAL: Without -n, `open -a` activates an *already running* com.kindasmd.editor (often an old
+  # Xcode/DerivedData build). The newly copied ~/MBP-Mods/KindasMD/KindasMDEditor.app never runs — all
+  # your fixes look like they "do nothing". -n forces a new process from THIS .app bundle.
+  exec open -na "$APP" "$FILENAME"
+fi
+
+echo "KindasMD: no KindasMDEditor.app found (expected ${INSTALLED} or Debug under src/editor/)." >&2
+echo "KindasMD: build + install: cd \"${MOD_DIR}/src/editor\" && xcodebuild -scheme KindasMDEditor -configuration Debug -derivedDataPath ./build-dd build && cp -R ./build-dd/Build/Products/Debug/KindasMDEditor.app \"${INSTALLED}\"" >&2
+osascript -e "display dialog \"KindasMD could not find KindasMDEditor.app.\\n\\nExpected:\\n${INSTALLED}\\n\\nBuild and copy the app into KindasMD/, then click Dock again.\" buttons {\"OK\"} default button 1 with title \"KindasMD\" with icon stop" 2>/dev/null || true
+exit 1

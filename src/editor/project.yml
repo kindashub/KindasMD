@@ -1,0 +1,90 @@
+name: KindasMDEditor
+options:
+  bundleIdPrefix: com.kindasmd
+  deploymentTarget:
+    macOS: "14.0"
+  xcodeVersion: "16.0"
+  createIntermediateGroups: true
+
+packages:
+  cmark-gfm:
+    url: https://github.com/brokenhandsio/cmark-gfm.git
+    exactVersion: "2.1.0"
+  KeyboardShortcuts:
+    url: https://github.com/sindresorhus/KeyboardShortcuts
+    exactVersion: "2.1.0"
+
+targets:
+  KindasMDEditor:
+    type: application
+    platform: macOS
+    sources:
+      - path: Clearly
+      - path: Shared
+      - path: Shared/Resources/mermaid.min.js
+        buildPhase: resources
+      - path: Shared/Resources/katex.min.js
+        buildPhase: resources
+      - path: Shared/Resources/katex.min.css
+        buildPhase: resources
+      - path: Shared/Resources/fonts
+        buildPhase: resources
+        type: folder
+      - path: Clearly/Resources/MarkdownDocument.icns
+        buildPhase: resources
+    dependencies:
+      - package: cmark-gfm
+        product: cmark
+      - package: KeyboardShortcuts
+      - target: KindasMDQuickLook
+        embed: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.kindasmd.editor
+        PRODUCT_NAME: KindasMDEditor
+        MARKETING_VERSION: "2.0.0"
+        CURRENT_PROJECT_VERSION: "19"
+        SWIFT_VERSION: "5.9"
+        CODE_SIGN_ENTITLEMENTS: Clearly/Clearly.entitlements
+        INFOPLIST_FILE: Clearly/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        ENABLE_HARDENED_RUNTIME: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+      configs:
+        Release:
+          CODE_SIGN_STYLE: Manual
+          CODE_SIGN_IDENTITY: "Developer ID Application"
+
+  KindasMDQuickLook:
+    type: app-extension
+    platform: macOS
+    sources:
+      - path: ClearlyQuickLook
+      - path: Shared
+      - path: Shared/Resources/mermaid.min.js
+        buildPhase: resources
+      - path: Shared/Resources/katex.min.js
+        buildPhase: resources
+      - path: Shared/Resources/katex.min.css
+        buildPhase: resources
+      - path: Shared/Resources/fonts
+        buildPhase: resources
+        type: folder
+    dependencies:
+      - package: cmark-gfm
+        product: cmark
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.kindasmd.editor.quicklook
+        PRODUCT_NAME: KindasMDQuickLook
+        MARKETING_VERSION: "2.0.0"
+        CURRENT_PROJECT_VERSION: "19"
+        SWIFT_VERSION: "5.9"
+        GENERATE_INFOPLIST_FILE: NO
+        ENABLE_HARDENED_RUNTIME: YES
+        CODE_SIGN_ENTITLEMENTS: ClearlyQuickLook/ClearlyQuickLook.entitlements
+        INFOPLIST_FILE: ClearlyQuickLook/Info.plist
+      configs:
+        Release:
+          CODE_SIGN_STYLE: Manual
+          CODE_SIGN_IDENTITY: "Developer ID Application"

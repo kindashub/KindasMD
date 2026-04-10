@@ -1,0 +1,38 @@
+import Foundation
+
+final class FindState: ObservableObject {
+    @Published var isVisible = false
+    @Published var query = ""
+    @Published var matchCount = 0
+    @Published var currentIndex = 0 // 1-based, 0 = no matches
+    @Published var focusRequest = UUID()
+    var activeMode: ViewMode = .edit
+
+    var editorNavigateToNext: (() -> Void)?
+    var editorNavigateToPrevious: (() -> Void)?
+    var previewNavigateToNext: (() -> Void)?
+    var previewNavigateToPrevious: (() -> Void)?
+
+    var navigateToNext: (() -> Void)? {
+        switch activeMode {
+        case .edit, .split:
+            editorNavigateToNext
+        case .preview:
+            previewNavigateToNext
+        }
+    }
+
+    var navigateToPrevious: (() -> Void)? {
+        switch activeMode {
+        case .edit, .split:
+            editorNavigateToPrevious
+        case .preview:
+            previewNavigateToPrevious
+        }
+    }
+
+    func present() {
+        isVisible = true
+        focusRequest = UUID()
+    }
+}
