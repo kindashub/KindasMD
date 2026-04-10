@@ -214,22 +214,27 @@ struct ContentView: View {
 
     private var controlBarContent: some View {
         HStack(spacing: 6) {
-            // Mode picker (compact segmented)
-            Picker("Mode", selection: $mode) {
-                Image(systemName: "pencil").tag(ViewMode.edit)
-                Image(systemName: "rectangle.split.2x1").tag(ViewMode.split)
-                Image(systemName: "eye").tag(ViewMode.preview)
-            }
-            .pickerStyle(.segmented)
-            .frame(width: 100)
-            .controlSize(.small)
+            // Filename display on the left
+            Text(fileURL?.lastPathComponent ?? "Untitled")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(maxWidth: 200, alignment: .leading)
+
+            Spacer()
+
+            // Quick Copy buttons
+            QuickCopyButtonsView()
 
             Divider().frame(height: 16)
 
-            // Quick Copy buttons (currently in QuickCopyButtonsView)
-            QuickCopyButtonsView()
+            // Mode buttons -- flat, plain, small (replaces segmented Picker)
+            controlBarButton("pencil", active: mode == .edit) { mode = .edit }
+            controlBarButton("rectangle.split.2x1", active: mode == .split) { mode = .split }
+            controlBarButton("eye", active: mode == .preview) { mode = .preview }
 
-            Spacer()
+            Divider().frame(height: 16)
 
             // Toggle buttons -- flat, plain, small
             controlBarButton("square.grid.3x3", active: boxStripVisible) {

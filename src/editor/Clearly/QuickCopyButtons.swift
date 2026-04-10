@@ -35,6 +35,7 @@ final class QuickCopyModel: ObservableObject {
     /// Computed date string in YYYYMMDD:HHMM format, evaluated at copy time
     var dateString: String {
         let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyyMMdd:HHmm"
         return formatter.string(from: Date())
     }
@@ -103,7 +104,7 @@ struct QuickCopyButtonsView: View {
             .contentShape(Rectangle())
             .help("Copy date: \(model.dateString)")
 
-            // S1/S2/S3 buttons: flat text labels, editable
+            // S1/S2/S3 buttons: flat text labels with subtle border, editable
             ForEach(model.items.prefix(3)) { item in
                 Button {
                     model.copyItem(item)
@@ -113,7 +114,11 @@ struct QuickCopyButtonsView: View {
                         .foregroundStyle(item.content.isEmpty ? .tertiary : .secondary)
                 }
                 .buttonStyle(.plain)
-                .frame(width: 22, height: 20)
+                .frame(width: 26, height: 20)
+                .background(
+                    RoundedRectangle(cornerRadius: 3)
+                        .stroke(Color.secondary.opacity(0.3), lineWidth: 0.5)
+                )
                 .contentShape(Rectangle())
                 .help(item.content.isEmpty ? "\(item.label): (empty)" : "\(item.label): \(item.content.prefix(50))\(item.content.count > 50 ? "…" : "")")
             }

@@ -203,7 +203,7 @@ struct KindasMDEditorApp: App {
             ContentView(document: file.$document, fileURL: file.fileURL)
                 .preferredColorScheme(resolvedColorScheme)
         }
-        .windowToolbarStyle(.unifiedCompact(showsTitle: true))
+        .windowToolbarStyle(.unifiedCompact(showsTitle: false))
         .defaultSize(width: 720, height: 900)
         .commands {
             CommandGroup(after: .importExport) {
