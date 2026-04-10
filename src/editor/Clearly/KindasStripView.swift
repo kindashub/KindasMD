@@ -4,32 +4,76 @@ import SwiftUI
 // MARK: - Box character grid (copy to clipboard; optional edit layout)
 
 enum KindasBoxGridConfig {
-    /// Full-width strip grid: 41 columns × 5 rows (expanded palette with Greek+math row).
-    static let columnsPerRow = 41
-    static let rowCount = 5
-    static var cellCount: Int { columnsPerRow * rowCount }
+    /// Full-width strip grid: 41 columns × 4 rows (single char), plus row 5 (20 cols × 2 chars), plus row 6 (10 cols × 4 chars).
+    static let columnsPerRow = 41      // For rows 1-4
+    static let row5Columns = 20        // Row 5: 2-char cells
+    static let row6Columns = 10      // Row 6: 4-char cells
+    static let rowCount = 6
+    static let row5CharLimit = 2
+    static let row6CharLimit = 4
+
+    /// Total cells: (4 × 41) + 20 + 10 = 194
+    static var cellCount: Int { (columnsPerRow * 4) + row5Columns + row6Columns }
 
     static func defaultCells() -> [String] {
-        let raw =
+        // Rows 1-4: 164 single-character cells (existing content)
+        let rawRows1to4 =
             "╌─═━╎│║┃█░▒▓⦿┌┐└┘├┤┬┴┼╔╗╚╝╠╣╦╩╬·•□■○●★☆§→←↑↓"
             + "╴╵╶╷╸╹╺╻╼╽╾╿┏┓┗┛┳┻╋┣┫╍╏═╒╓╔╕╖╗╘╙╚╛╜╝╞╟╠╡╢╣╤╥╦╧╨╩╪╫"
             + "▀▄▌▐▖▗▘▝▞▟▁▂▃▄▅▆▇█░▒▓▔▕▖▗▘▙▚▛▜▝▞▟"
             + "⋯⋮⋯⌘⌥⇧⌃⌤␣¶†‡※‰♠♣♥♦✓✗⊢⊣⊤⊥⊦⊧⊨⊩⊪⊫⊬⊭⊮⊯"
-            + "⇐⇒⇔∀∃∴∵⊂⊃⊆⊇∩∪∅∈∉∑∏∫√∞∧∨¬⊕⊗"
-            + "αβγδεζηθικλμνξοπρστυφχψωΑΒΓΔΕΖ"
-        var cells = raw.map { String($0) }
-        while cells.count < cellCount {
+
+        // Row 5: 20 two-character cells (default: box-drawing pairs)
+        let row5Defaults = [
+            "──", "══", "━━", "││", "║║", "┌┐", "└┘", "├┤", "┬┴", "┼┼",
+            "╔╗", "╚╝", "╠╣", "╦╩", "╬╬", "▌▐", "▖▗", "▘▝", "▙▟", "▚▞"
+        ]
+
+        // Row 6: 10 four-character cells (default: patterns)
+        let row6Defaults = [
+            "────", "════", "━━━━", "····", "░░░░", "▒▒▒▒", "▓▓▓▓", "████", "→→→→", "⇒⇒⇒⇒"
+        ]
+
+        var cells = rawRows1to4.map { String($0) }
+        // Pad rows 1-4 to exactly 164 cells if needed
+        while cells.count < (columnsPerRow * 4) {
             cells.append(" ")
         }
+        // Add row 5 and row 6
+        cells.append(contentsOf: row5Defaults)
+        cells.append(contentsOf: row6Defaults)
+
         return Array(cells.prefix(cellCount))
     }
 
-    /// Single extended grapheme per palette cell; empty input becomes a visible space.
-    static func normalizeCell(_ s: String) -> String {
+    /// Normalize cell content: truncate to maxLength, remove newlines, empty becomes space.
+    static func normalizeCell(_ s: String, maxLength: Int = 1) -> String {
         let t = s.replacingOccurrences(of: "\n", with: "").replacingOccurrences(of: "\r", with: "")
         if t.isEmpty { return " " }
-        guard let first = t.first else { return " " }
-        return String(first)
+        // Take up to maxLength characters from the start
+        let endIndex = t.index(t.startIndex, offsetBy: min(maxLength, t.count))
+        return String(t[..<endIndex])
+    }
+
+    /// Get max character limit for a given cell index
+    static func charLimit(forIndex index: Int) -> Int {
+        if index < (columnsPerRow * 4) {
+            return 1  // Rows 1-4: single char
+        } else if index < (columnsPerRow * 4) + row5Columns {
+            return row5CharLimit  // Row 5: 2 chars
+        } else {
+            return row6CharLimit    // Row 6: 4 chars
+        }
+    }
+
+    /// Get column count for a given row index (0-based)
+    static func columns(forRow row: Int) -> Int {
+        switch row {
+        case 0, 1, 2, 3: return columnsPerRow  // Rows 1-4
+        case 4: return row5Columns              // Row 5
+        case 5: return row6Columns              // Row 6
+        default: return columnsPerRow
+        }
     }
 }
 
@@ -37,23 +81,39 @@ struct BoxCharacterPaletteView: View {
     @Binding var cells: [String]
     var fontSize: CGFloat
 
-    private var columnsPerRow: Int { KindasBoxGridConfig.columnsPerRow }
-    private var gridRows: Int { KindasBoxGridConfig.rowCount }
+    private let hPad: CGFloat = 12
+    private let spacing: CGFloat = 1
 
     var body: some View {
-        let hPad: CGFloat = 12
-        let spacing: CGFloat = 1
-
         VStack(alignment: .leading, spacing: spacing) {
-            ForEach(0 ..< gridRows, id: \.self) { row in
+            // Rows 1-4: 41 columns, 1 char per cell, 1:1 aspect ratio
+            ForEach(0..<4, id: \.self) { row in
                 HStack(spacing: spacing) {
-                    ForEach(0 ..< columnsPerRow, id: \.self) { col in
-                        let index = row * columnsPerRow + col
-                        boxCell(character: safeCharacter(at: index))
+                    ForEach(0..<KindasBoxGridConfig.columnsPerRow, id: \.self) { col in
+                        let index = row * KindasBoxGridConfig.columnsPerRow + col
+                        boxCell(character: safeCharacter(at: index), fontScale: 0.72)
                     }
                 }
                 .frame(maxWidth: .infinity)
             }
+
+            // Row 5: 20 columns, 2 chars per cell, 2:1 aspect ratio (wider cells)
+            HStack(spacing: spacing) {
+                ForEach(0..<KindasBoxGridConfig.row5Columns, id: \.self) { col in
+                    let index = (KindasBoxGridConfig.columnsPerRow * 4) + col
+                    boxCell(character: safeCharacter(at: index), fontScale: 0.65, aspectRatio: 2.0)
+                }
+            }
+            .frame(maxWidth: .infinity)
+
+            // Row 6: 10 columns, 4 chars per cell, 4:1 aspect ratio (even wider)
+            HStack(spacing: spacing) {
+                ForEach(0..<KindasBoxGridConfig.row6Columns, id: \.self) { col in
+                    let index = (KindasBoxGridConfig.columnsPerRow * 4) + KindasBoxGridConfig.row5Columns + col
+                    boxCell(character: safeCharacter(at: index), fontScale: 0.60, aspectRatio: 4.0)
+                }
+            }
+            .frame(maxWidth: .infinity)
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .padding(.horizontal, hPad)
@@ -66,31 +126,33 @@ struct BoxCharacterPaletteView: View {
     }
 
     @ViewBuilder
-    private func boxCell(character: String) -> some View {
+    private func boxCell(character: String, fontScale: CGFloat, aspectRatio: CGFloat = 1.0) -> some View {
         let ch = character
         Button {
             copyToPasteboard(ch)
         } label: {
             GeometryReader { geo in
-                let s = min(geo.size.width, geo.size.height)
+                let s = min(geo.size.width / aspectRatio, geo.size.height)
+                let cellFontSize = max(8, min(s * 0.65, fontSize * fontScale))
                 ZStack {
                     RoundedRectangle(cornerRadius: 3)
                         .fill(Color(nsColor: Theme.backgroundColor).opacity(0.55))
                     RoundedRectangle(cornerRadius: 3)
                         .strokeBorder(Color.secondary.opacity(0.32), lineWidth: 0.5)
                     Text(ch.isEmpty ? " " : ch)
-                        .font(.system(size: max(9, min(s * 0.65, fontSize * 0.72)), design: .monospaced))
+                        .font(.system(size: cellFontSize, design: .monospaced))
                         .foregroundStyle(Color.accentColor)
-                        .minimumScaleFactor(0.35)
+                        .minimumScaleFactor(0.30)
+                        .lineLimit(1)
                 }
                 .frame(width: geo.size.width, height: geo.size.height)
                 .contentShape(Rectangle())
             }
-            .aspectRatio(1, contentMode: .fit)
+            .aspectRatio(aspectRatio, contentMode: .fit)
         }
         .buttonStyle(.plain)
         .frame(maxWidth: .infinity)
-        .aspectRatio(1, contentMode: .fit)
+        .aspectRatio(aspectRatio, contentMode: .fit)
         .help("Copy to clipboard")
     }
 
@@ -107,30 +169,47 @@ struct BoxCharacterEditGridView: View {
     @Binding var cells: [String]
     var fontSize: CGFloat
 
-    private var columnsPerRow: Int { KindasBoxGridConfig.columnsPerRow }
-    private var gridRows: Int { KindasBoxGridConfig.rowCount }
+    private let hPad: CGFloat = 12
+    private let spacing: CGFloat = 1
 
     var body: some View {
-        let hPad: CGFloat = 12
-        let spacing: CGFloat = 1
-
         VStack(alignment: .leading, spacing: spacing) {
-            ForEach(0 ..< gridRows, id: \.self) { row in
+            // Rows 1-4: 41 columns, 1 char per cell
+            ForEach(0..<4, id: \.self) { row in
                 HStack(spacing: spacing) {
-                    ForEach(0 ..< columnsPerRow, id: \.self) { col in
-                        let index = row * columnsPerRow + col
-                        editCell(at: index)
+                    ForEach(0..<KindasBoxGridConfig.columnsPerRow, id: \.self) { col in
+                        let index = row * KindasBoxGridConfig.columnsPerRow + col
+                        editCell(at: index, fontScale: 0.72, aspectRatio: 1.0)
                     }
                 }
                 .frame(maxWidth: .infinity)
             }
+
+            // Row 5: 20 columns, 2 chars per cell
+            HStack(spacing: spacing) {
+                ForEach(0..<KindasBoxGridConfig.row5Columns, id: \.self) { col in
+                    let index = (KindasBoxGridConfig.columnsPerRow * 4) + col
+                    editCell(at: index, fontScale: 0.65, aspectRatio: 2.0)
+                }
+            }
+            .frame(maxWidth: .infinity)
+
+            // Row 6: 10 columns, 4 chars per cell
+            HStack(spacing: spacing) {
+                ForEach(0..<KindasBoxGridConfig.row6Columns, id: \.self) { col in
+                    let index = (KindasBoxGridConfig.columnsPerRow * 4) + KindasBoxGridConfig.row5Columns + col
+                    editCell(at: index, fontScale: 0.60, aspectRatio: 4.0)
+                }
+            }
+            .frame(maxWidth: .infinity)
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .padding(.horizontal, hPad)
     }
 
     private func cellBinding(at index: Int) -> Binding<String> {
-        Binding(
+        let maxLength = KindasBoxGridConfig.charLimit(forIndex: index)
+        return Binding(
             get: {
                 guard index < cells.count else { return " " }
                 let v = cells[index]
@@ -141,17 +220,17 @@ struct BoxCharacterEditGridView: View {
                 while next.count <= index {
                     next.append(" ")
                 }
-                next[index] = KindasBoxGridConfig.normalizeCell(newValue)
+                next[index] = KindasBoxGridConfig.normalizeCell(newValue, maxLength: maxLength)
                 cells = next
             }
         )
     }
 
     @ViewBuilder
-    private func editCell(at index: Int) -> some View {
+    private func editCell(at index: Int, fontScale: CGFloat, aspectRatio: CGFloat) -> some View {
         GeometryReader { geo in
-            let s = min(geo.size.width, geo.size.height)
-            let fontSizePx = max(9, min(s * 0.65, fontSize * 0.72))
+            let s = min(geo.size.width / aspectRatio, geo.size.height)
+            let cellFontSize = max(8, min(s * 0.65, fontSize * fontScale))
             ZStack {
                 RoundedRectangle(cornerRadius: 3)
                     .fill(Color(nsColor: Theme.backgroundColor).opacity(0.55))
@@ -159,21 +238,21 @@ struct BoxCharacterEditGridView: View {
                     .strokeBorder(Color.accentColor.opacity(0.45), lineWidth: 0.5)
                 TextField("", text: cellBinding(at: index))
                     .textFieldStyle(.plain)
-                    .font(.system(size: fontSizePx, design: .monospaced))
+                    .font(.system(size: cellFontSize, design: .monospaced))
                     .foregroundColor(Color.accentColor)
                     .tint(Color.accentColor)
                     .multilineTextAlignment(.center)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.35)
+                    .minimumScaleFactor(0.30)
                     .padding(2)
             }
             .frame(width: geo.size.width, height: geo.size.height)
             .contentShape(Rectangle())
         }
-        .aspectRatio(1, contentMode: .fit)
+        .aspectRatio(aspectRatio, contentMode: .fit)
         .frame(maxWidth: .infinity)
-        .aspectRatio(1, contentMode: .fit)
-        .help("One character per square; paste is trimmed to one glyph")
+        .aspectRatio(aspectRatio, contentMode: .fit)
+        .help("Max \(KindasBoxGridConfig.charLimit(forIndex: index)) character(s)")
     }
 }
 

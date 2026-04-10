@@ -350,10 +350,37 @@ struct ContentView: View {
 
     private func loadBoxCells() {
         let cellData = UserDefaults.standard.data(forKey: "kindasBoxGridCells_v2")
-        guard let d = cellData else { return }
-        guard let decoded = try? JSONDecoder().decode([String].self, from: d) else { return }
-        guard decoded.count == KindasBoxGridConfig.cellCount else { return }
-        boxCells = decoded
+        guard let d = cellData else {
+            // No saved data, use defaults
+            boxCells = KindasBoxGridConfig.defaultCells()
+            return
+        }
+        guard let decoded = try? JSONDecoder().decode([String].self, from: d) else {
+            boxCells = KindasBoxGridConfig.defaultCells()
+            return
+        }
+
+        let expectedCount = KindasBoxGridConfig.cellCount  // 194
+        let oldCount = KindasBoxGridConfig.columnsPerRow * 5  // 205 (old 5x41 format)
+
+        if decoded.count == expectedCount {
+            // Current format - use as-is
+            boxCells = decoded
+        } else if decoded.count == oldCount {
+            // Migration: old 5x41 format (205 cells) -> new 6-row format (194 cells)
+            // Keep first 164 cells (rows 1-4), add defaults for new rows 5-6
+            var migrated = Array(decoded.prefix(KindasBoxGridConfig.columnsPerRow * 4))
+            let defaults = KindasBoxGridConfig.defaultCells()
+            // Append defaults for row 5 (20 cells) and row 6 (10 cells)
+            let row5Start = KindasBoxGridConfig.columnsPerRow * 4
+            migrated.append(contentsOf: defaults[row5Start..<expectedCount])
+            boxCells = migrated
+            // Save the migrated data
+            saveBoxCells(migrated)
+        } else {
+            // Unexpected count, use defaults
+            boxCells = KindasBoxGridConfig.defaultCells()
+        }
     }
 
     private func setupFileWatcher() {

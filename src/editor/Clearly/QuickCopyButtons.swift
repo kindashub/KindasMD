@@ -19,7 +19,7 @@ struct QuickCopyItem: Identifiable, Codable, Equatable {
 
 @MainActor
 final class QuickCopyModel: ObservableObject {
-    private static let storageKey = "kindasQuickCopyItems_v1"
+    private static let storageKey = "kindasQuickCopyItems_v2"
 
     @Published var items: [QuickCopyItem] = []
     @Published var isEditing = false
@@ -32,11 +32,18 @@ final class QuickCopyModel: ObservableObject {
         }
     }
 
+    /// Computed date string in YYYYMMDD:HHMM format, evaluated at copy time
+    var dateString: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd:HHmm"
+        return formatter.string(from: Date())
+    }
+
     private static func defaultItems() -> [QuickCopyItem] {
         [
-            QuickCopyItem(label: "Date", content: DateFormatter.localizedString(from: Date(), dateStyle: .medium, timeStyle: .none)),
-            QuickCopyItem(label: "Time", content: DateFormatter.localizedString(from: Date(), dateStyle: .none, timeStyle: .short)),
-            QuickCopyItem(label: "Stamp", content: ISO8601DateFormatter().string(from: Date()))
+            QuickCopyItem(label: "S1", content: ""),
+            QuickCopyItem(label: "S2", content: ""),
+            QuickCopyItem(label: "S3", content: "")
         ]
     }
 
@@ -44,6 +51,12 @@ final class QuickCopyModel: ObservableObject {
         let pb = NSPasteboard.general
         pb.clearContents()
         pb.setString(item.content, forType: .string)
+    }
+
+    func copyDateString() {
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(dateString, forType: .string)
     }
 
     func updateContent(for id: UUID, to newContent: String) {
@@ -76,36 +89,50 @@ struct QuickCopyButtonsView: View {
     @StateObject private var model = QuickCopyModel()
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 6) {
+            // Date button: calendar icon, copies YYYYMMDD:HHMM (not editable)
+            Button {
+                model.copyDateString()
+            } label: {
+                Image(systemName: "calendar")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .frame(width: 22, height: 20)
+            .contentShape(Rectangle())
+            .help("Copy date: \(model.dateString)")
+
+            // S1/S2/S3 buttons: flat text labels, editable
             ForEach(model.items.prefix(3)) { item in
                 Button {
                     model.copyItem(item)
                 } label: {
                     Text(item.label)
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.primary)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 4)
+                        .font(.system(size: 10, weight: .medium, design: .monospaced))
+                        .foregroundStyle(item.content.isEmpty ? .tertiary : .secondary)
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .help("Copy: \(item.content.prefix(50))\(item.content.count > 50 ? "…" : "")")
+                .buttonStyle(.plain)
+                .frame(width: 22, height: 20)
+                .contentShape(Rectangle())
+                .help(item.content.isEmpty ? "\(item.label): (empty)" : "\(item.label): \(item.content.prefix(50))\(item.content.count > 50 ? "…" : "")")
             }
 
             Divider()
-                .frame(height: 20)
+                .frame(height: 16)
 
+            // Edit button
             Button {
                 model.isEditing.toggle()
             } label: {
                 Image(systemName: model.isEditing ? "checkmark.circle.fill" : "doc.on.clipboard")
-                    .font(.system(size: 13))
+                    .font(.system(size: 11))
                     .foregroundStyle(model.isEditing ? Color.accentColor : .secondary)
             }
             .buttonStyle(.plain)
-            .frame(width: 24, height: 22)
+            .frame(width: 22, height: 20)
             .contentShape(Rectangle())
-            .help(model.isEditing ? "Done editing clips" : "Edit quick copy clips")
+            .help(model.isEditing ? "Done editing clips" : "Edit S1/S2/S3 clips")
         }
         .popover(isPresented: $model.isEditing, arrowEdge: .bottom) {
             QuickCopyEditPanel(model: model)
@@ -120,7 +147,7 @@ struct QuickCopyEditPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("QUICK COPY CLIPS")
+            Text("QUICK COPY SLOTS")
                 .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(.tertiary)
                 .tracking(1)
@@ -128,22 +155,22 @@ struct QuickCopyEditPanel: View {
                 .padding(.top, 12)
                 .padding(.bottom, 8)
 
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 0) {
-                    ForEach($model.items) { $item in
-                        QuickCopyEditRow(item: $item, onUpdate: { newContent in
-                            model.updateContent(for: item.id, to: newContent)
-                        }, onLabelUpdate: { newLabel in
-                            model.updateLabel(for: item.id, to: newLabel)
-                        })
-                    }
+            // Only show S1/S2/S3 (editable slots), not the Date button
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach($model.items.prefix(3)) { $item in
+                    QuickCopyEditRow(item: $item, onUpdate: { newContent in
+                        model.updateContent(for: item.id, to: newContent)
+                    }, onLabelUpdate: { newLabel in
+                        model.updateLabel(for: item.id, to: newLabel)
+                    })
                 }
-                .padding(.bottom, 8)
             }
+            .padding(.horizontal, 8)
+            .padding(.bottom, 12)
 
             HStack {
                 Spacer()
-                Text("\(model.items.count) clips")
+                Text("Date button copies YYYYMMDD:HHMM")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
                 Spacer()
@@ -151,7 +178,7 @@ struct QuickCopyEditPanel: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
         }
-        .frame(width: 240, height: 280)
+        .frame(width: 240, height: 200)
     }
 }
 
