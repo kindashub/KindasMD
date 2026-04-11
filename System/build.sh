@@ -3,6 +3,13 @@ set -euo pipefail
 MOD_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "${MOD_DIR}/src/editor"
 xcodegen generate
+# Restore pinned SPM versions (Package.resolved is outside the gitignored xcodeproj)
+RESOLVED_SRC="Package.resolved"
+RESOLVED_DST="KindasMDEditor.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
+if [[ -f "$RESOLVED_SRC" ]]; then
+  mkdir -p "$(dirname "$RESOLVED_DST")"
+  cp "$RESOLVED_SRC" "$RESOLVED_DST"
+fi
 xcodebuild -scheme KindasMDEditor -configuration Debug \
     -derivedDataPath ./build-dd build
 cp -R ./build-dd/Build/Products/Debug/KindasMDEditor.app \

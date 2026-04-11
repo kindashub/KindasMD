@@ -1,0 +1,24 @@
+{
+  "originHash" : "56d66b23e00e17afcfc7eaae054a3890122ff7d6007b85ae1976ac34b398eb8e",
+  "pins" : [
+    {
+      "identity" : "cmark-gfm",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/brokenhandsio/cmark-gfm.git",
+      "state" : {
+        "revision" : "e97450a77a40f12b4f88f95891621c3b5d8669de",
+        "version" : "2.1.0"
+      }
+    },
+    {
+      "identity" : "keyboardshortcuts",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/sindresorhus/KeyboardShortcuts",
+      "state" : {
+        "revision" : "9369a045a72a5296150879781321aecd228171db",
+        "version" : "2.1.0"
+      }
+    }
+  ],
+  "version" : 3
+}

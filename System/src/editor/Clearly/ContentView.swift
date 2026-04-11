@@ -173,6 +173,7 @@ struct ContentView: View {
             .animation(.easeInOut(duration: 0.2), value: masterStripVisible)
             .safeAreaInset(edge: .top, spacing: 0) {
                 controlBar
+                    .background(Theme.backgroundColorSwiftUI)
             }
     }
 
@@ -226,12 +227,10 @@ struct ContentView: View {
                     FindBarView(findState: findState)
                     Divider()
                 }
-                // Characters strip at top; MASTER at bottom (Edit / Split / Preview) so MASTER stays usable while reading preview.
                 if boxStripVisible {
                     KindasCharactersStripView(boxCells: $boxCells, fontSize: CGFloat(fontSize))
                     Divider()
                 }
-                // Ruler is toggleable via toolbar button
                 if rulerVisible {
                     ColumnRulerView(fontSize: CGFloat(fontSize))
                         .frame(height: 24)
@@ -317,7 +316,6 @@ struct ContentView: View {
     private func loadBoxCells() {
         let cellData = UserDefaults.standard.data(forKey: "kindasBoxGridCells_v2")
         guard let d = cellData else {
-            // No saved data, use defaults
             boxCells = KindasBoxGridConfig.defaultCells()
             return
         }
@@ -326,25 +324,16 @@ struct ContentView: View {
             return
         }
 
-        let expectedCount = KindasBoxGridConfig.cellCount  // 194
-        let oldCount = KindasBoxGridConfig.columnsPerRow * 5  // 205 (old 5x41 format)
+        let expectedCount = KindasBoxGridConfig.cellCount  // 164
 
         if decoded.count == expectedCount {
-            // Current format - use as-is
             boxCells = decoded
-        } else if decoded.count == oldCount {
-            // Migration: old 5x41 format (205 cells) -> new 6-row format (194 cells)
-            // Keep first 164 cells (rows 1-4), add defaults for new rows 5-6
-            var migrated = Array(decoded.prefix(KindasBoxGridConfig.columnsPerRow * 4))
-            let defaults = KindasBoxGridConfig.defaultCells()
-            // Append defaults for row 5 (20 cells) and row 6 (10 cells)
-            let row5Start = KindasBoxGridConfig.columnsPerRow * 4
-            migrated.append(contentsOf: defaults[row5Start..<expectedCount])
+        } else if decoded.count > expectedCount {
+            // Migration from older formats (194 or 205 cells): keep rows 1-4
+            let migrated = Array(decoded.prefix(expectedCount))
             boxCells = migrated
-            // Save the migrated data
             saveBoxCells(migrated)
         } else {
-            // Unexpected count, use defaults
             boxCells = KindasBoxGridConfig.defaultCells()
         }
     }

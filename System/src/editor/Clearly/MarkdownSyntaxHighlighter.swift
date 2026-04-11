@@ -138,10 +138,16 @@ final class MarkdownSyntaxHighlighter: NSObject {
                         case 2:  color = Theme.heading2Color
                         default: color = Theme.heading3Color
                         }
+                        let headingFont = Theme.editorFontBold(size: Theme.editorFontSize + 4)
+                        let headingLineHeight = ceil(headingFont.ascender - headingFont.descender + headingFont.leading)
+                        let headingParagraph = NSMutableParagraphStyle()
+                        headingParagraph.minimumLineHeight = headingLineHeight
+                        headingParagraph.maximumLineHeight = headingLineHeight
+                        textStorage.addAttribute(.paragraphStyle, value: headingParagraph, range: match.range)
                         textStorage.addAttribute(.foregroundColor, value: Theme.syntaxColor, range: syntaxRange)
                         textStorage.addAttributes([
                             .foregroundColor: color,
-                            .font: Theme.editorFontBold(size: Theme.editorFontSize + 4)
+                            .font: headingFont
                         ], range: contentRange)
                     }
 

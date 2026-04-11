@@ -25,6 +25,7 @@ struct EditorView: NSViewRepresentable {
         scrollView.hasHorizontalScroller = false
         scrollView.drawsBackground = false
         scrollView.autohidesScrollers = true
+        scrollView.automaticallyAdjustsContentInsets = false
 
         let textView = ClearlyTextView()
         textView.isRichText = false
@@ -141,6 +142,10 @@ struct EditorView: NSViewRepresentable {
 
         // Keep coordinator's parent fresh so the binding never goes stale
         context.coordinator.parent = self
+
+        // With automaticallyAdjustsContentInsets = false (set in makeNSView) and the
+        // controlBar placed via .safeAreaInset, SwiftUI positions this scroll view
+        // below the controlBar. No manual contentInsets adjustment is needed.
 
         let priorLast = context.coordinator.lastMode
 
