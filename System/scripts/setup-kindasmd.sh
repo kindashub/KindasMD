@@ -6,10 +6,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SRC_LAUNCHER="${SCRIPT_DIR}/kindasmd"
 MOD_DIR="${HOME}/MBP-Mods/KindasMD"
-SYS_DIR="${MOD_DIR}/system"
+SYS_DIR="${MOD_DIR}/System/scripts"
 BIN_LAUNCHER="${SYS_DIR}/kindasmd"
 DEFAULT_DIR="${TEXTEDIT_DEFAULT_DIR:-$HOME/TextMD}"
-EDITOR_APP="${MOD_DIR}/KindasMDEditor.app"
+EDITOR_APP="${MOD_DIR}/System/app/KindasMDEditor.app"
 BUILD_DOCK="${SCRIPT_DIR}/build-kindasmd-dock-app.sh"
 
 if [[ ! -f "$SRC_LAUNCHER" ]]; then

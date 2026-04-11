@@ -20,7 +20,7 @@ int main(void) {
 		home = pw->pw_dir;
 	}
 
-	if ((size_t)snprintf(script, sizeof(script), "%s/MBP-Mods/KindasMD/system/kindasmd", home)
+	if ((size_t)snprintf(script, sizeof(script), "%s/MBP-Mods/KindasMD/System/scripts/kindasmd", home)
 	    >= sizeof(script)) {
 		(void)fprintf(stderr, "KindasMD: path too long\n");
 		return 1;

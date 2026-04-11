@@ -5,7 +5,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MOD_DIR="${HOME}/MBP-Mods/KindasMD"
-SYS_DIR="${MOD_DIR}/system"
+SYS_DIR="${MOD_DIR}/System/scripts"
 DOCK_APP="${MOD_DIR}/KindasMD.app"
 BIN_LAUNCHER="${SYS_DIR}/kindasmd"
 LAUNCHER_C="${SCRIPT_DIR}/kindasmd-launcher.c"
@@ -36,7 +36,7 @@ clang -O2 -Wall -Wextra \
   "$LAUNCHER_C"
 
 ICON_OUT="${DOCK_APP}/Contents/Resources/KindasMD.icns"
-EDITOR="${MOD_DIR}/KindasMDEditor.app"
+EDITOR="${MOD_DIR}/System/app/KindasMDEditor.app"
 if [[ -f "${EDITOR}/Contents/Resources/AppIcon.icns" ]]; then
   cp "${EDITOR}/Contents/Resources/AppIcon.icns" "$ICON_OUT"
 elif [[ -f "${EDITOR}/Contents/Resources/applet.icns" ]]; then
