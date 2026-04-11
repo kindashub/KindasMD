@@ -1,16 +1,31 @@
 # KindasMD
 
-A macOS Markdown editor. Swift / SwiftUI / AppKit.
+A native macOS Markdown editor built with Swift, SwiftUI, and AppKit.
 
 ---
 
 ## Quick Start
 
-**To use KindasMD:** Drag `KindasMD.app` to your Dock and click it.
+```bash
+# Prerequisites: Xcode 16+, xcodegen (brew install xcodegen)
+git clone https://github.com/kindashub/KindasMD.git
+cd KindasMD
+bash System/build.sh
+# Drag KindasMD.app to your Dock
+```
 
-**For agents working on the project:** All documentation, source code, and build scripts are in the `System/` folder.
+**Already built?** Just drag `KindasMD.app` to your Dock and click it.
 
-See `System/README.md` for complete documentation.
+---
+
+## Documentation
+
+| Document | Purpose |
+|----------|---------|
+| [`System/docs/HANDBOOK.md`](System/docs/HANDBOOK.md) | Complete build handbook — everything needed to rebuild from scratch |
+| [`System/README.md`](System/README.md) | Agent operating guide + master rules |
+| [`System/AGENTS.md`](System/AGENTS.md) | Architecture and technical context |
+| [`System/CHANGELOG.md`](System/CHANGELOG.md) | Version history |
 
 ---
 
@@ -18,13 +33,23 @@ See `System/README.md` for complete documentation.
 
 ```
 KindasMD/
-├── KindasMD.app      ← Click this to launch the editor
-└── System/           ← Documentation, source, scripts, plans
-    ├── README.md     ← Full documentation for agents
-    ├── AGENTS.md     ← Architecture and technical context
-    ├── build.sh      ← Build the editor
-    ├── plans/        ← Active plans
-    ├── handoffs/     ← Session notes
-    ├── scripts/      ← Dock launcher scripts
-    └── src/          ← Swift source code
+├── KindasMD.app          ← Dock launcher (click to open editor)
+├── README.md             ← YOU ARE HERE
+└── System/
+    ├── docs/HANDBOOK.md  ← Full rebuild handbook
+    ├── build.sh          ← One-command build + install
+    ├── src/editor/       ← Swift source code (~5850 LOC)
+    ├── scripts/          ← Dock launcher + utilities
+    ├── plans/            ← Development plans
+    └── handoffs/         ← Session handoff notes
 ```
+
+---
+
+## Current Version
+
+**V2.3 "Mono Zen"** — April 2026
+
+Features: live edit/split/preview, Mono Zen syntax colors, character palette,
+Quick Copy clipboard slots, column ruler, document outline, MASTER notes,
+scratchpad, PDF export, QuickLook extension.

@@ -203,8 +203,8 @@ struct KindasMDEditorApp: App {
             ContentView(document: file.$document, fileURL: file.fileURL)
                 .preferredColorScheme(resolvedColorScheme)
         }
-        .windowToolbarStyle(.unifiedCompact(showsTitle: false))
-        .defaultSize(width: 720, height: 900)
+        .windowToolbarStyle(.unifiedCompact(showsTitle: true))
+        .defaultSize(width: 500, height: 400)
         .commands {
             CommandGroup(after: .importExport) {
                 ExportPDFCommand()

@@ -8,7 +8,6 @@ enum KindasBoxGridConfig {
     static let columnsPerRow = 41      // For rows 1-4
     static let row5Columns = 20        // Row 5: 2-char cells
     static let row6Columns = 10      // Row 6: 4-char cells
-    static let rowCount = 6
     static let row5CharLimit = 2
     static let row6CharLimit = 4
 
@@ -66,15 +65,6 @@ enum KindasBoxGridConfig {
         }
     }
 
-    /// Get column count for a given row index (0-based)
-    static func columns(forRow row: Int) -> Int {
-        switch row {
-        case 0, 1, 2, 3: return columnsPerRow  // Rows 1-4
-        case 4: return row5Columns              // Row 5
-        case 5: return row6Columns              // Row 6
-        default: return columnsPerRow
-        }
-    }
 }
 
 struct BoxCharacterPaletteView: View {
@@ -141,7 +131,7 @@ struct BoxCharacterPaletteView: View {
                         .strokeBorder(Color.secondary.opacity(0.32), lineWidth: 0.5)
                     Text(ch.isEmpty ? " " : ch)
                         .font(.system(size: cellFontSize, design: .monospaced))
-                        .foregroundStyle(Color.accentColor)
+                        .foregroundStyle(.secondary)
                         .minimumScaleFactor(0.30)
                         .lineLimit(1)
                 }
@@ -235,12 +225,12 @@ struct BoxCharacterEditGridView: View {
                 RoundedRectangle(cornerRadius: 3)
                     .fill(Color(nsColor: Theme.backgroundColor).opacity(0.55))
                 RoundedRectangle(cornerRadius: 3)
-                    .strokeBorder(Color.accentColor.opacity(0.45), lineWidth: 0.5)
+                    .strokeBorder(Color.secondary.opacity(0.3), lineWidth: 0.5)
                 TextField("", text: cellBinding(at: index))
                     .textFieldStyle(.plain)
                     .font(.system(size: cellFontSize, design: .monospaced))
-                    .foregroundColor(Color.accentColor)
-                    .tint(Color.accentColor)
+                    .foregroundColor(.secondary)
+                    .tint(.secondary)
                     .multilineTextAlignment(.center)
                     .lineLimit(1)
                     .minimumScaleFactor(0.30)

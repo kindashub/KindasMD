@@ -39,8 +39,8 @@ final class MarkdownSyntaxHighlighter: NSObject {
         // Bold: **text** or __text__
         add("(\\*\\*|__)(.+?)(\\1)", .bold)
 
-        // Italic: *text* or _text_ (not inside words for _)
-        add("(?<![\\w*])(\\*|_)(?!\\s)(.+?)(?<!\\s)\\1(?![\\w*])", .italic)
+        // Italic: *text* or _text_ (not inside words for _, not matching **bold**)
+        add("(?<![\\w*])(\\*|_)(?![\\s*])(.+?)(?<![\\s*])\\1(?![\\w*])", .italic)
 
         // Strikethrough: ~~text~~
         add("(~~)(.+?)(~~)", .strikethrough)
@@ -128,13 +128,19 @@ final class MarkdownSyntaxHighlighter: NSObject {
 
                 switch style {
                 case .heading:
-                    // Group 1: syntax (##), Group 2: content
                     if match.numberOfRanges >= 3 {
                         let syntaxRange = match.range(at: 1)
                         let contentRange = match.range(at: 2)
+                        let hashCount = (text as NSString).substring(with: syntaxRange).filter({ $0 == "#" }).count
+                        let color: NSColor
+                        switch hashCount {
+                        case 1:  color = Theme.heading1Color
+                        case 2:  color = Theme.heading2Color
+                        default: color = Theme.heading3Color
+                        }
                         textStorage.addAttribute(.foregroundColor, value: Theme.syntaxColor, range: syntaxRange)
                         textStorage.addAttributes([
-                            .foregroundColor: Theme.headingColor,
+                            .foregroundColor: color,
                             .font: Theme.editorFontBold(size: Theme.editorFontSize + 4)
                         ], range: contentRange)
                     }
@@ -175,11 +181,11 @@ final class MarkdownSyntaxHighlighter: NSObject {
                         let openRange = match.range(at: 1)
                         let contentRange = match.range(at: 2)
                         let closeRange = match.range(at: 3)
-                        textStorage.addAttribute(.foregroundColor, value: Theme.syntaxColor, range: openRange)
-                        textStorage.addAttribute(.foregroundColor, value: Theme.syntaxColor, range: closeRange)
+                        textStorage.addAttribute(.foregroundColor, value: Theme.strikethroughColor, range: openRange)
+                        textStorage.addAttribute(.foregroundColor, value: Theme.strikethroughColor, range: closeRange)
                         textStorage.addAttributes([
                             .strikethroughStyle: NSUnderlineStyle.single.rawValue,
-                            .foregroundColor: Theme.syntaxColor
+                            .foregroundColor: Theme.strikethroughColor
                         ], range: contentRange)
                     }
 
@@ -190,14 +196,18 @@ final class MarkdownSyntaxHighlighter: NSObject {
                         let closeRange = match.range(at: 3)
                         textStorage.addAttribute(.foregroundColor, value: Theme.syntaxColor, range: openRange)
                         textStorage.addAttribute(.foregroundColor, value: Theme.syntaxColor, range: closeRange)
-                        textStorage.addAttribute(.foregroundColor, value: Theme.codeColor, range: contentRange)
+                        textStorage.addAttributes([
+                            .foregroundColor: Theme.codeColor,
+                            .backgroundColor: Theme.codeBackgroundColor
+                        ], range: contentRange)
                     }
 
                 case .codeBlock:
                     codeBlockRanges.append(match.range)
-                    // Fade the entire block
-                    textStorage.addAttribute(.foregroundColor, value: Theme.codeColor, range: match.range)
-                    // Fade the fences specifically
+                    textStorage.addAttributes([
+                        .foregroundColor: Theme.codeColor,
+                        .backgroundColor: Theme.codeBackgroundColor
+                    ], range: match.range)
                     if match.numberOfRanges >= 2 {
                         textStorage.addAttribute(.foregroundColor, value: Theme.syntaxColor, range: match.range(at: 1))
                     }

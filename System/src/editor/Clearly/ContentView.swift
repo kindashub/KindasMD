@@ -1,7 +1,6 @@
-import Combine
 import SwiftUI
 
-enum ViewMode: String, CaseIterable {
+enum ViewMode: String {
     case edit
     case split
     case preview
@@ -50,71 +49,47 @@ extension FocusedValues {
     }
 }
 
-// MARK: - Window Frame Persistence
+// MARK: - Window Activation
 
-/// Sets NSWindow.frameAutosaveName so macOS automatically saves/restores window size and position.
-/// Uses a per-file autosave name so each document remembers its own window frame.
-struct WindowFrameSaver: NSViewRepresentable {
-    let fileURL: URL?
+struct WindowActivator: NSViewRepresentable {
+    var documentHash: Int
 
-    final class Coordinator {
-        var autosaveName: String?
+    class Coordinator: NSObject {
+        var observation: NSKeyValueObservation?
+        deinit { observation?.invalidate() }
     }
 
-    private var autosaveName: String {
-        fileURL?.absoluteString ?? "ClearlyUntitledWindow"
-    }
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator()
-    }
-
-    private func applyAutosaveName(
-        to window: NSWindow,
-        coordinator: Coordinator,
-        persistCurrentFrame: Bool
-    ) {
-        guard coordinator.autosaveName != autosaveName else { return }
-        coordinator.autosaveName = autosaveName
-        window.setFrameAutosaveName(autosaveName)
-        if persistCurrentFrame {
-            window.saveFrame(usingName: autosaveName)
-        }
-    }
+    func makeCoordinator() -> Coordinator { Coordinator() }
 
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
         DispatchQueue.main.async {
-            if let window = view.window {
-                applyAutosaveName(
-                    to: window,
-                    coordinator: context.coordinator,
-                    persistCurrentFrame: false
-                )
-                // Ensure the document window comes to front after opening.
-                activateDocumentApp()
-                window.makeKeyAndOrderFront(nil)
+            guard let window = view.window else { return }
+            Self.clearLegacyAutosaveFrames()
+            activateDocumentApp()
+            window.makeKeyAndOrderFront(nil)
+            window.subtitle = ""
+            context.coordinator.observation = window.observe(\.subtitle) { win, _ in
+                if !win.subtitle.isEmpty {
+                    DispatchQueue.main.async { win.subtitle = "" }
+                }
             }
         }
         return view
     }
 
-    func updateNSView(_ nsView: NSView, context: Context) {
-        guard let window = nsView.window else { return }
-        applyAutosaveName(
-            to: window,
-            coordinator: context.coordinator,
-            persistCurrentFrame: context.coordinator.autosaveName != nil
-        )
-    }
-}
+    func updateNSView(_ nsView: NSView, context: Context) {}
 
-struct HiddenToolbarBackground: ViewModifier {
-    func body(content: Content) -> some View {
-        if #available(macOS 15.0, *) {
-            content.toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
-        } else {
-            content
+    private static let didClearLegacy: Bool = {
+        clearLegacyAutosaveFrames()
+        return true
+    }()
+
+    private static func clearLegacyAutosaveFrames() {
+        let defaults = UserDefaults.standard
+        let allKeys = defaults.dictionaryRepresentation().keys
+        for key in allKeys where key.hasPrefix("NSWindow Frame ") {
+            defaults.removeObject(forKey: key)
         }
     }
 }
@@ -137,6 +112,7 @@ struct ContentView: View {
     @StateObject private var textEditBrowser = TextEditBrowserModel()
     @StateObject private var scrollRelay = ScrollSyncRelay()
     @State private var showTextEditBrowser = false
+    @State private var rulerVisible = false
 
     init(document: Binding<MarkdownDocument>, fileURL: URL? = nil) {
         self._document = document
@@ -158,15 +134,46 @@ struct ContentView: View {
         contentWithEventHandlers
     }
 
+    private var controlBar: some View {
+        HStack(spacing: 3) {
+            Spacer()
+            controlBarButton("pencil", active: mode == .edit) { mode = .edit }
+            controlBarButton("rectangle.split.2x1", active: mode == .split) { mode = .split }
+            controlBarButton("eye", active: mode == .preview) { mode = .preview }
+            Divider().frame(height: 14)
+            QuickCopyButtonsView()
+            Divider().frame(height: 14)
+            controlBarButton("square.grid.3x3", active: boxStripVisible) {
+                withAnimation(.easeInOut(duration: 0.2)) { boxStripVisible.toggle() }
+            }
+            controlBarButton("doc.text", active: masterStripVisible) {
+                withAnimation(.easeInOut(duration: 0.2)) { masterStripVisible.toggle() }
+            }
+            controlBarButton("folder", active: showTextEditBrowser) {
+                withAnimation(.easeInOut(duration: 0.2)) { showTextEditBrowser.toggle() }
+            }
+            controlBarButton("list.bullet.indent", active: outlineState.isVisible) {
+                withAnimation(.easeInOut(duration: 0.2)) { outlineState.toggle() }
+            }
+            controlBarButton("ruler", active: rulerVisible) {
+                withAnimation(.easeInOut(duration: 0.2)) { rulerVisible.toggle() }
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+    }
+
     private var contentWithModifiers: some View {
         mainContent
             .frame(minWidth: 500, minHeight: 400)
             .background(Theme.backgroundColorSwiftUI)
-            .modifier(HiddenToolbarBackground())
-            .background(WindowFrameSaver(fileURL: fileURL))
+            .background(WindowActivator(documentHash: document.text.hashValue))
             .animation(.easeInOut(duration: 0.15), value: mode)
             .animation(.easeInOut(duration: 0.2), value: boxStripVisible)
             .animation(.easeInOut(duration: 0.2), value: masterStripVisible)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                controlBar
+            }
     }
 
     private var contentWithEventHandlers: some View {
@@ -192,60 +199,12 @@ struct ContentView: View {
             .focusedSceneValue(\.outlineState, outlineState)
             .onAppear(perform: onAppearHandler)
             .onDisappear(perform: onDisappearHandler)
-            .onChange(of: boxCells, perform: saveBoxCells)
+            .onChange(of: boxCells) { _, new in saveBoxCells(new) }
             .onChange(of: fileURL) { _, newURL in
                 fileWatcher.watch(newURL, currentText: document.text)
             }
-            .onChange(of: document.text, perform: handleDocumentTextChange)
-            .onChange(of: masterStripVisible, perform: handleMasterStripVisibilityChange)
-    }
-
-    // MARK: - Custom Control Bar (replaces native toolbar)
-
-    private var controlBarContent: some View {
-        HStack(spacing: 6) {
-            // Filename display on the left
-            Text(fileURL?.lastPathComponent ?? "Untitled")
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(.primary)
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .frame(maxWidth: 200, alignment: .leading)
-
-            Spacer()
-
-            // Quick Copy buttons
-            QuickCopyButtonsView()
-
-            Divider().frame(height: 16)
-
-            // Mode buttons -- flat, plain, small (replaces segmented Picker)
-            controlBarButton("pencil", active: mode == .edit) { mode = .edit }
-            controlBarButton("rectangle.split.2x1", active: mode == .split) { mode = .split }
-            controlBarButton("eye", active: mode == .preview) { mode = .preview }
-
-            Divider().frame(height: 16)
-
-            // Toggle buttons -- flat, plain, small
-            controlBarButton("square.grid.3x3", active: boxStripVisible) {
-                withAnimation(.easeInOut(duration: 0.2)) { boxStripVisible.toggle() }
-            }
-            controlBarButton("doc.text", active: masterStripVisible) {
-                withAnimation(.easeInOut(duration: 0.2)) { masterStripVisible.toggle() }
-            }
-            controlBarButton("folder", active: showTextEditBrowser) {
-                withAnimation(.easeInOut(duration: 0.2)) { showTextEditBrowser.toggle() }
-            }
-            controlBarButton("list.bullet.indent", active: outlineState.isVisible) {
-                withAnimation(.easeInOut(duration: 0.2)) { outlineState.toggle() }
-            }
-            controlBarButton("magnifyingglass", active: findState.isVisible) {
-                findState.present()
-            }
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(Theme.backgroundColorSwiftUI)
+            .onChange(of: document.text) { _, new in handleDocumentTextChange(new) }
+            .onChange(of: masterStripVisible) { _, new in handleMasterStripVisibilityChange(new) }
     }
 
     private func controlBarButton(_ icon: String, active: Bool, action: @escaping () -> Void) -> some View {
@@ -263,8 +222,6 @@ struct ContentView: View {
     private var mainContent: some View {
         HStack(spacing: 0) {
             VStack(spacing: 0) {
-                controlBarContent
-                Divider()
                 if findState.isVisible {
                     FindBarView(findState: findState)
                     Divider()
@@ -274,9 +231,11 @@ struct ContentView: View {
                     KindasCharactersStripView(boxCells: $boxCells, fontSize: CGFloat(fontSize))
                     Divider()
                 }
-                // Same ruler row in edit, split, and preview so switching modes does not jump the layout.
-                ColumnRulerView(fontSize: CGFloat(fontSize))
-                    .frame(height: 24)
+                // Ruler is toggleable via toolbar button
+                if rulerVisible {
+                    ColumnRulerView(fontSize: CGFloat(fontSize))
+                        .frame(height: 24)
+                }
                 mainEditorContent
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }

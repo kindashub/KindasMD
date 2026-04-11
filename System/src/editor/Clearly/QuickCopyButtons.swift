@@ -32,44 +32,31 @@ final class QuickCopyModel: ObservableObject {
         }
     }
 
-    /// Computed date string in YYYYMMDD:HHMM format, evaluated at copy time
-    var dateString: String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyyMMdd:HHmm"
-        return formatter.string(from: Date())
-    }
+    private static let dateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyyMMdd:HHmm"
+        return f
+    }()
+
+    var dateString: String { Self.dateFormatter.string(from: Date()) }
 
     private static func defaultItems() -> [QuickCopyItem] {
         [
-            QuickCopyItem(label: "S1", content: ""),
-            QuickCopyItem(label: "S2", content: ""),
-            QuickCopyItem(label: "S3", content: "")
+            QuickCopyItem(label: "Slot 1", content: ""),
+            QuickCopyItem(label: "Slot 2", content: ""),
+            QuickCopyItem(label: "Slot 3", content: "")
         ]
     }
 
-    func copyItem(_ item: QuickCopyItem) {
+    func copyToClipboard(_ text: String) {
         let pb = NSPasteboard.general
         pb.clearContents()
-        pb.setString(item.content, forType: .string)
+        pb.setString(text, forType: .string)
     }
 
     func copyDateString() {
-        let pb = NSPasteboard.general
-        pb.clearContents()
-        pb.setString(dateString, forType: .string)
-    }
-
-    func updateContent(for id: UUID, to newContent: String) {
-        guard let index = items.firstIndex(where: { $0.id == id }) else { return }
-        items[index].content = newContent
-        saveItems()
-    }
-
-    func updateLabel(for id: UUID, to newLabel: String) {
-        guard let index = items.firstIndex(where: { $0.id == id }) else { return }
-        items[index].label = newLabel
-        saveItems()
+        copyToClipboard(dateString)
     }
 
     private func loadItems() {
@@ -78,7 +65,7 @@ final class QuickCopyModel: ObservableObject {
         items = decoded
     }
 
-    private func saveItems() {
+    func saveItems() {
         guard let data = try? JSONEncoder().encode(items) else { return }
         UserDefaults.standard.set(data, forKey: Self.storageKey)
     }
@@ -90,8 +77,7 @@ struct QuickCopyButtonsView: View {
     @StateObject private var model = QuickCopyModel()
 
     var body: some View {
-        HStack(spacing: 6) {
-            // Date button: calendar icon, copies YYYYMMDD:HHMM (not editable)
+        HStack(spacing: 3) {
             Button {
                 model.copyDateString()
             } label: {
@@ -104,40 +90,36 @@ struct QuickCopyButtonsView: View {
             .contentShape(Rectangle())
             .help("Copy date: \(model.dateString)")
 
-            // S1/S2/S3 buttons: flat text labels with subtle border, editable
-            ForEach(model.items.prefix(3)) { item in
+            ForEach(0..<min(3, model.items.count), id: \.self) { index in
+                let hasContent = !model.items[index].content.isEmpty
                 Button {
-                    model.copyItem(item)
+                    model.copyToClipboard(model.items[index].content)
                 } label: {
-                    Text(item.label)
-                        .font(.system(size: 10, weight: .medium, design: .monospaced))
-                        .foregroundStyle(item.content.isEmpty ? .tertiary : .secondary)
+                    Image(systemName: "square.on.square")
+                        .font(.system(size: 11))
+                        .foregroundStyle(hasContent ? Color.accentColor : .secondary)
                 }
                 .buttonStyle(.plain)
-                .frame(width: 26, height: 20)
-                .background(
-                    RoundedRectangle(cornerRadius: 3)
-                        .stroke(Color.secondary.opacity(0.3), lineWidth: 0.5)
-                )
+                .frame(width: 22, height: 20)
                 .contentShape(Rectangle())
-                .help(item.content.isEmpty ? "\(item.label): (empty)" : "\(item.label): \(item.content.prefix(50))\(item.content.count > 50 ? "…" : "")")
+                .help(hasContent
+                    ? "Slot \(index + 1): \(model.items[index].content.prefix(50))"
+                    : "Slot \(index + 1): empty")
             }
 
-            Divider()
-                .frame(height: 16)
+            Divider().frame(height: 14)
 
-            // Edit button
             Button {
                 model.isEditing.toggle()
             } label: {
-                Image(systemName: model.isEditing ? "checkmark.circle.fill" : "doc.on.clipboard")
+                Image(systemName: model.isEditing ? "checkmark.circle.fill" : "pencil.line")
                     .font(.system(size: 11))
                     .foregroundStyle(model.isEditing ? Color.accentColor : .secondary)
             }
             .buttonStyle(.plain)
             .frame(width: 22, height: 20)
             .contentShape(Rectangle())
-            .help(model.isEditing ? "Done editing clips" : "Edit S1/S2/S3 clips")
+            .help(model.isEditing ? "Done" : "Edit clips")
         }
         .popover(isPresented: $model.isEditing, arrowEdge: .bottom) {
             QuickCopyEditPanel(model: model)
@@ -151,92 +133,35 @@ struct QuickCopyEditPanel: View {
     @ObservedObject var model: QuickCopyModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: 12) {
             Text("QUICK COPY SLOTS")
                 .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(.tertiary)
                 .tracking(1)
-                .padding(.horizontal, 12)
-                .padding(.top, 12)
-                .padding(.bottom, 8)
 
-            // Only show S1/S2/S3 (editable slots), not the Date button
-            VStack(alignment: .leading, spacing: 8) {
-                ForEach($model.items.prefix(3)) { $item in
-                    QuickCopyEditRow(item: $item, onUpdate: { newContent in
-                        model.updateContent(for: item.id, to: newContent)
-                    }, onLabelUpdate: { newLabel in
-                        model.updateLabel(for: item.id, to: newLabel)
-                    })
+            ForEach(model.items.indices.prefix(3), id: \.self) { index in
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Slot \(index + 1)")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.secondary)
+
+                    TextField("Type content to copy…", text: Binding(
+                        get: { model.items[index].content },
+                        set: { newValue in
+                            model.items[index].content = newValue
+                            model.saveItems()
+                        }
+                    ))
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 12))
                 }
             }
-            .padding(.horizontal, 8)
-            .padding(.bottom, 12)
 
-            HStack {
-                Spacer()
-                Text("Date button copies YYYYMMDD:HHMM")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                Spacer()
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            Text("Click slot icon to copy to clipboard")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
         }
-        .frame(width: 240, height: 200)
-    }
-}
-
-// MARK: - Quick Copy Edit Row
-
-struct QuickCopyEditRow: View {
-    @Binding var item: QuickCopyItem
-    let onUpdate: (String) -> Void
-    let onLabelUpdate: (String) -> Void
-    @State private var isHovered = false
-    @FocusState private var isContentFocused: Bool
-    @FocusState private var isLabelFocused: Bool
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 8) {
-                TextField("Label", text: Binding(
-                    get: { item.label },
-                    set: { newValue in
-                        item.label = newValue
-                        onLabelUpdate(newValue)
-                    }
-                ))
-                .textFieldStyle(.plain)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(.primary)
-                .focused($isLabelFocused)
-                .frame(width: 60)
-
-                TextEditor(text: Binding(
-                    get: { item.content },
-                    set: { newValue in
-                        item.content = newValue
-                        onUpdate(newValue)
-                    }
-                ))
-                .font(.system(size: 11))
-                .foregroundStyle(.primary)
-                .focused($isContentFocused)
-                .scrollContentBackground(.hidden)
-                .background(Color.clear)
-                .frame(height: 40)
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-        }
-        .background(
-            RoundedRectangle(cornerRadius: 4)
-                .fill(isHovered ? Color.primary.opacity(0.06) : Color.clear)
-                .padding(.horizontal, 4)
-        )
-        .onHover { hovering in
-            isHovered = hovering
-        }
+        .padding(16)
+        .frame(width: 260)
     }
 }

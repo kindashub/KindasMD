@@ -54,67 +54,95 @@ enum Theme {
 
     // MARK: - Dynamic Colors (auto-resolve for light/dark)
 
-    static let backgroundColor = NSColor(name: "themeBackground") { appearance in
+    // MARK: Mono Zen palette (dark) — light mode keeps neutral grays
+
+    static let backgroundColor = NSColor(name: "mzBackground") { appearance in
         appearance.isDark
-            ? NSColor(red: 0.1, green: 0.1, blue: 0.1, alpha: 1)
+            ? NSColor(red: 0.110, green: 0.110, blue: 0.106, alpha: 1)   // #1C1C1B
             : NSColor(red: 0.98, green: 0.98, blue: 0.98, alpha: 1)
     }
 
-    static let textColor = NSColor(name: "themeText") { appearance in
+    static let textColor = NSColor(name: "mzText") { appearance in
         appearance.isDark
-            ? NSColor(red: 0.95, green: 0.95, blue: 0.95, alpha: 1)
+            ? NSColor(red: 1.0, green: 1.0, blue: 1.0, alpha: 1)         // #FFFFFF
             : NSColor(red: 0.133, green: 0.133, blue: 0.133, alpha: 1)
     }
 
-    static let syntaxColor = NSColor(name: "themeSyntax") { appearance in
+    static let syntaxColor = NSColor(name: "mzSyntax") { appearance in
         appearance.isDark
-            ? NSColor(red: 0.45, green: 0.45, blue: 0.45, alpha: 1)
+            ? NSColor(red: 0.40, green: 0.40, blue: 0.38, alpha: 1)
             : NSColor(red: 0.6, green: 0.6, blue: 0.6, alpha: 1)
     }
 
-    static let headingColor = NSColor(name: "themeHeading") { appearance in
+    static let heading1Color = NSColor(name: "mzHeading1") { appearance in
         appearance.isDark
-            ? NSColor(red: 0.95, green: 0.95, blue: 0.95, alpha: 1)
+            ? NSColor(red: 0.827, green: 0.820, blue: 0.780, alpha: 1)   // #D3D1C7
             : NSColor(red: 0.1, green: 0.1, blue: 0.1, alpha: 1)
     }
 
-    static let boldColor = NSColor(name: "themeBold") { appearance in
+    static let heading2Color = NSColor(name: "mzHeading2") { appearance in
         appearance.isDark
-            ? NSColor(red: 0.9, green: 0.9, blue: 0.9, alpha: 1)
-            : NSColor(red: 0.15, green: 0.15, blue: 0.15, alpha: 1)
+            ? NSColor(red: 0.706, green: 0.698, blue: 0.663, alpha: 1)   // #B4B2A9
+            : NSColor(red: 0.2, green: 0.2, blue: 0.2, alpha: 1)
     }
 
-    static let italicColor = NSColor(name: "themeItalic") { appearance in
+    static let heading3Color = NSColor(name: "mzHeading3") { appearance in
         appearance.isDark
-            ? NSColor(red: 0.8, green: 0.8, blue: 0.8, alpha: 1)
-            : NSColor(red: 0.25, green: 0.25, blue: 0.25, alpha: 1)
+            ? NSColor(red: 0.533, green: 0.529, blue: 0.502, alpha: 1)   // #888780
+            : NSColor(red: 0.3, green: 0.3, blue: 0.3, alpha: 1)
     }
 
-    static let codeColor = NSColor(name: "themeCode") { appearance in
+    static let headingColor = heading1Color
+
+    static let boldColor = NSColor(name: "mzBold") { appearance in
         appearance.isDark
-            ? NSColor(red: 0.9, green: 0.45, blue: 0.45, alpha: 1)
+            ? NSColor(srgbRed: 0.788, green: 0.647, blue: 0.353, alpha: 1)   // #C9A55A gold
+            : NSColor(srgbRed: 0.15, green: 0.15, blue: 0.15, alpha: 1)
+    }
+
+    static let italicColor = NSColor(name: "mzItalic") { appearance in
+        appearance.isDark
+            ? NSColor(srgbRed: 0.478, green: 0.620, blue: 0.541, alpha: 1)   // #7A9E8A sage green
+            : NSColor(srgbRed: 0.25, green: 0.25, blue: 0.25, alpha: 1)
+    }
+
+    static let codeColor = NSColor(name: "mzCode") { appearance in
+        appearance.isDark
+            ? NSColor(red: 0.753, green: 0.439, blue: 0.439, alpha: 1)   // #C07070
             : NSColor(red: 0.75, green: 0.2, blue: 0.2, alpha: 1)
     }
 
-    static let linkColor = NSColor(name: "themeLink") { appearance in
+    static let codeBackgroundColor = NSColor(name: "mzCodeBg") { appearance in
         appearance.isDark
-            ? NSColor(red: 0.4, green: 0.6, blue: 0.9, alpha: 1)
+            ? NSColor(red: 0.173, green: 0.173, blue: 0.165, alpha: 1)   // #2C2C2A
+            : NSColor(red: 0.93, green: 0.93, blue: 0.93, alpha: 1)
+    }
+
+    static let linkColor = NSColor(name: "mzLink") { appearance in
+        appearance.isDark
+            ? NSColor(red: 0.482, green: 0.561, blue: 0.631, alpha: 1)   // #7B8FA1
             : NSColor(red: 0.2, green: 0.4, blue: 0.7, alpha: 1)
     }
 
-    static let mathColor = NSColor(name: "themeMath") { appearance in
+    static let mathColor = NSColor(name: "mzMath") { appearance in
         appearance.isDark
             ? NSColor(red: 0.7, green: 0.5, blue: 0.9, alpha: 1)
             : NSColor(red: 0.5, green: 0.25, blue: 0.7, alpha: 1)
     }
 
-    static let blockquoteColor = NSColor(name: "themeBlockquote") { appearance in
+    static let blockquoteColor = NSColor(name: "mzBlockquote") { appearance in
         appearance.isDark
-            ? NSColor(red: 0.6, green: 0.6, blue: 0.6, alpha: 1)
+            ? NSColor(red: 0.541, green: 0.494, blue: 0.420, alpha: 1)   // #8A7E6B
             : NSColor(red: 0.4, green: 0.4, blue: 0.4, alpha: 1)
     }
 
-    static let frontmatterColor = NSColor(name: "themeFrontmatter") { appearance in
+    static let strikethroughColor = NSColor(name: "mzStrikethrough") { appearance in
+        appearance.isDark
+            ? NSColor(red: 0.373, green: 0.369, blue: 0.353, alpha: 1)   // #5F5E5A
+            : NSColor(red: 0.5, green: 0.5, blue: 0.5, alpha: 1)
+    }
+
+    static let frontmatterColor = NSColor(name: "mzFrontmatter") { appearance in
         appearance.isDark
             ? NSColor(red: 0.55, green: 0.55, blue: 0.65, alpha: 1)
             : NSColor(red: 0.35, green: 0.35, blue: 0.5, alpha: 1)

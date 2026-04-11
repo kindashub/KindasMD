@@ -7,6 +7,7 @@ xcodebuild -scheme KindasMDEditor -configuration Debug \
     -derivedDataPath ./build-dd build
 cp -R ./build-dd/Build/Products/Debug/KindasMDEditor.app \
     "${MOD_DIR}/app/"
+codesign --force --deep --sign - "${MOD_DIR}/app/KindasMDEditor.app"
 echo "Installed to app/KindasMDEditor.app"
 echo "Creating Dock launcher..."
 bash "${MOD_DIR}/scripts/setup-kindasmd.sh"
