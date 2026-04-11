@@ -18,8 +18,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MOD_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-CANONICAL="${MOD_DIR}/System/app/KindasMDEditor.app"
-DERIVED_APP="${MOD_DIR}/src/editor/.derivedData/Build/Products/Debug/KindasMDEditor.app"
+CANONICAL="${MOD_DIR}/app/KindasMDEditor.app"
+DERIVED_APP="${MOD_DIR}/src/editor/build-dd/Build/Products/Debug/KindasMDEditor.app"
 
 LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
 
