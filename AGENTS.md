@@ -34,3 +34,11 @@ Core files:
 
 Key pattern: NSTextView bridged to SwiftUI via NSViewRepresentable (not TextEditor).
 This is intentional for undo, find panel, and NSTextStorageDelegate syntax highlighting.
+
+## Pipeline Reminder
+
+When ending a session, the cold-start message must appear in **both**:
+1. The handoff file (`handoffs/YYYYMMDD-HHMMSS-sessionN.md`)
+2. **The final chat response** (so the user can copy-paste it immediately)
+
+See `.cursor/rules/kindasmd-dock-workflow.mdc` for full pipeline rules.
