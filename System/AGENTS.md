@@ -4,13 +4,13 @@ macOS Markdown editor. Swift/SwiftUI/AppKit. Sources: `src/editor/Clearly/`.
 
 ## Start Here
 
-Read `README.md` in this folder. It is the single entry point for all agents.
+Read `System/README.md` in the parent folder. It is the single entry point for all agents.
 README contains master rules, pipeline rules, operating procedures, and folder structure.
 
 ## Build
 
 ```bash
-bash build.sh
+bash System/build.sh
 ```
 
 Then Dock-launch `KindasMD.app` to verify.
@@ -18,8 +18,8 @@ Then Dock-launch `KindasMD.app` to verify.
 ## Architecture
 
 Two `.app` bundles:
-- `KindasMD.app` — Dock launcher (calls `system/kindasmd` script, creates TX-*.md, opens editor)
-- `KindasMDEditor.app` — the editor (built from `src/editor/`)
+- `KindasMD.app` — Dock launcher (calls `System/scripts/kindasmd` script, creates TX-*.md, opens editor)
+- `KindasMDEditor.app` — the editor (built from `System/src/editor/`)
 
 Window layout: toolbar + optional box palette + optional column ruler +
 editor/split/preview pane + optional MASTER strip + status bar + optional outline panel.
@@ -41,4 +41,4 @@ When ending a session, the cold-start message must appear in **both**:
 1. The handoff file (`handoffs/YYYYMMDD-HHMMSS-sessionN.md`)
 2. **The final chat response** (so the user can copy-paste it immediately)
 
-See `.cursor/rules/kindasmd-dock-workflow.mdc` for full pipeline rules.
+See `../.cursor/rules/kindasmd-dock-workflow.mdc` for full pipeline rules.
