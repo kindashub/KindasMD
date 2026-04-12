@@ -107,8 +107,13 @@ struct PreviewView: NSViewRepresentable {
         }
         context.coordinator.lastMode = mode
 
+        context.coordinator.pendingMarkdown = markdown
+        context.coordinator.pendingFontSize = fontSize
+        context.coordinator.pendingFileURL = fileURL
+        context.coordinator.pendingColorScheme = colorScheme
+
         if context.coordinator.lastContentKey != contentKey {
-            loadHTML(in: webView, context: context)
+            context.coordinator.scheduleLoadHTML(contentKey: contentKey)
         }
     }
 
@@ -161,8 +166,8 @@ struct PreviewView: NSViewRepresentable {
         webView.configuration.userContentController.removeScriptMessageHandler(forName: "copyToClipboard", contentWorld: Self.copyButtonContentWorld)
     }
 
-    private func loadHTML(in webView: WKWebView, context: Context) {
-        context.coordinator.lastContentKey = contentKey
+    private func loadHTML(in webView: WKWebView, context: Context, contentKey: String? = nil) {
+        context.coordinator.lastContentKey = contentKey ?? self.contentKey
         let rawBody = MarkdownRenderer.renderHTML(markdown)
         let htmlBody = LocalImageSupport.resolveImageSources(in: rawBody, relativeTo: fileURL)
         let scrollJS = """
@@ -260,6 +265,109 @@ struct PreviewView: NSViewRepresentable {
         private var findCancellables = Set<AnyCancellable>()
         private var matchCount = 0
         private var currentMatchIdx = 0
+
+        /// Debounce gate for loadHTML — prevents cmark-gfm from being called
+        /// faster than once per 300ms, which triggers an assertion in the
+        /// GFM table extension's stateful C code.
+        private var renderWorkItem: DispatchWorkItem?
+        var pendingMarkdown: String?
+        var pendingFontSize: CGFloat = 18
+        var pendingFileURL: URL?
+        var pendingColorScheme: ColorScheme = .light
+
+        func scheduleLoadHTML(contentKey: String) {
+            renderWorkItem?.cancel()
+            let item = DispatchWorkItem { [weak self] in
+                guard let self, let webView = self.webView else { return }
+                self.performDebouncedLoad(in: webView, contentKey: contentKey)
+            }
+            renderWorkItem = item
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: item)
+        }
+
+        private func performDebouncedLoad(in webView: WKWebView, contentKey: String) {
+            let markdown = pendingMarkdown ?? ""
+            let fontSize = pendingFontSize
+            let fURL = pendingFileURL
+            lastContentKey = contentKey
+            let rawBody = MarkdownRenderer.renderHTML(markdown)
+            let htmlBody = LocalImageSupport.resolveImageSources(in: rawBody, relativeTo: fURL)
+            let scrollJS = """
+            function clearlyMaxScroll() {
+                var el = document.scrollingElement || document.documentElement || document.body;
+                var h = Math.max(el ? el.scrollHeight : 0, document.body ? document.body.scrollHeight : 0);
+                var ih = window.innerHeight || 0;
+                return Math.max(1, h - ih);
+            }
+            var _scrollTicking = false;
+            window.addEventListener('scroll', function() {
+                if (_scrollTicking) return;
+                _scrollTicking = true;
+                requestAnimationFrame(function() {
+                    requestAnimationFrame(function() {
+                        var ih = window.innerHeight || 0;
+                        var maxScroll = clearlyMaxScroll();
+                        var sy = window.scrollY;
+                        if (ih < 8 || maxScroll < 2) {
+                            _scrollTicking = false;
+                            return;
+                        }
+                        window.webkit.messageHandlers.scrollSync.postMessage({ scrollY: sy, maxScroll: maxScroll });
+                        _scrollTicking = false;
+                    });
+                });
+            });
+            """
+            let html = """
+            <!DOCTYPE html>
+            <html>
+            <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <style>\(PreviewCSS.css(fontSize: fontSize))
+            mark.clearly-find { background-color: rgba(255, 230, 0, 0.4); border-radius: 2px; padding: 0 1px; }
+            mark.clearly-find.current { background-color: rgba(255, 165, 0, 0.6); }
+            @media (prefers-color-scheme: dark) {
+                mark.clearly-find { background-color: rgba(180, 150, 0, 0.4); }
+                mark.clearly-find.current { background-color: rgba(200, 150, 0, 0.6); }
+            }
+            </style>
+            </head>
+            <body>\(htmlBody)</body>
+            <script>
+            document.querySelectorAll('img').forEach(function(img) {
+                if (!img.complete) {
+                    img.addEventListener('load', function() {
+                        window._scheduleCacheRebuild && window._scheduleCacheRebuild();
+                    }, { once: true });
+                }
+                img.addEventListener('error', function() {
+                    var el = document.createElement('div');
+                    el.className = 'img-placeholder';
+                    var label = img.alt || '';
+                    el.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>' + (label ? '<span>' + label + '</span>' : '');
+                    if (img.width) el.style.width = img.width + 'px';
+                    img.replaceWith(el);
+                    window._scheduleCacheRebuild && window._scheduleCacheRebuild();
+                });
+            });
+            document.addEventListener('click', function(e) {
+                var a = e.target.closest('a[href]');
+                if (!a) return;
+                var href = a.getAttribute('href');
+                if (!href) return;
+                if (href.startsWith('#')) return;
+                e.preventDefault();
+                window.webkit.messageHandlers.linkClicked.postMessage(href);
+            });
+            \(scrollJS)
+            </script>
+            \(MathSupport.scriptHTML(for: htmlBody))
+            \(MermaidSupport.scriptHTML)
+            </html>
+            """
+            webView.loadHTMLString(html, baseURL: fURL?.deletingLastPathComponent() ?? MermaidSupport.resourceBaseURL)
+        }
 
         func observeFindState(_ state: FindState, webView: WKWebView) {
             self.webView = webView

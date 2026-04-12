@@ -113,6 +113,7 @@ struct ContentView: View {
     @StateObject private var scrollRelay = ScrollSyncRelay()
     @State private var showTextEditBrowser = false
     @State private var rulerVisible = false
+    @State private var autoSaveTask: Task<Void, Never>?
 
     init(document: Binding<MarkdownDocument>, fileURL: URL? = nil) {
         self._document = document
@@ -356,6 +357,23 @@ struct ContentView: View {
     private func handleDocumentTextChange(_ newText: String) {
         fileWatcher.updateCurrentText(newText)
         outlineState.parseHeadings(from: newText)
+        scheduleAutoSave()
+    }
+
+    private func scheduleAutoSave() {
+        autoSaveTask?.cancel()
+        guard let url = fileURL else { return }
+        let snapshot = document.text
+        autoSaveTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            guard !Task.isCancelled else { return }
+            do {
+                try snapshot.write(to: url, atomically: true, encoding: .utf8)
+                fileWatcher.updateLastKnownDiskText(snapshot)
+            } catch {
+                DiagnosticLog.log("Auto-save failed: \(error)")
+            }
+        }
     }
 
     private func saveBoxCells(_ newValue: [String]) {
@@ -387,6 +405,7 @@ struct ContentView: View {
     }
 
     private func onDisappearHandler() {
+        autoSaveTask?.cancel()
         ScrollBridge.unregisterRelay(for: positionSyncID)
     }
 }

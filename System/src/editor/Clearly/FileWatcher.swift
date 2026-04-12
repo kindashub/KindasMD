@@ -1,6 +1,7 @@
 import Foundation
 
 final class FileWatcher: ObservableObject {
+    private let queue = DispatchQueue(label: "com.kindasmd.filewatcher", qos: .utility)
     private var source: DispatchSourceFileSystemObject?
     private var fileDescriptor: Int32 = -1
     private var debounceWork: DispatchWorkItem?
@@ -10,25 +11,35 @@ final class FileWatcher: ObservableObject {
     var onChange: ((String) -> Void)?
 
     func watch(_ url: URL?, currentText: String? = nil) {
-        stopMonitoring()
-        monitoredURL = url
-        self.currentText = currentText
-        lastKnownDiskText = currentText
-        guard let url else { return }
-        startMonitoring(url)
+        queue.sync {
+            self._stopMonitoring()
+            self.monitoredURL = url
+            self.currentText = currentText
+            self.lastKnownDiskText = currentText
+            guard let url else { return }
+            self._startMonitoring(url)
+        }
     }
 
     func updateCurrentText(_ text: String) {
-        currentText = text
+        queue.async { [weak self] in
+            self?.currentText = text
+        }
+    }
+
+    func updateLastKnownDiskText(_ text: String) {
+        queue.async { [weak self] in
+            self?.lastKnownDiskText = text
+        }
     }
 
     deinit {
-        stopMonitoring()
+        _stopMonitoring()
     }
 
-    // MARK: - Private
+    // MARK: - Private (must be called on self.queue or from deinit)
 
-    private func startMonitoring(_ url: URL) {
+    private func _startMonitoring(_ url: URL) {
         let fd = open(url.path, O_EVTONLY)
         guard fd != -1 else { return }
         fileDescriptor = fd
@@ -36,23 +47,22 @@ final class FileWatcher: ObservableObject {
         let source = DispatchSource.makeFileSystemObjectSource(
             fileDescriptor: fd,
             eventMask: [.write, .delete, .rename, .link, .extend, .attrib],
-            queue: .global(qos: .utility)
+            queue: queue
         )
 
         source.setEventHandler { [weak self] in
             guard let self else { return }
             let flags = source.data
             if flags.contains(.delete) || flags.contains(.rename) {
-                // Atomic save: file was replaced. Tear down and re-establish.
-                self.stopMonitoring()
-                DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                self._stopMonitoring()
+                self.queue.asyncAfter(deadline: .now() + 0.1) { [weak self] in
                     guard let self, let url = self.monitoredURL else { return }
-                    self.startMonitoring(url)
-                    self.readAndNotify()
+                    self._startMonitoring(url)
+                    self._readAndNotify()
                 }
                 return
             }
-            self.debouncedReadAndNotify()
+            self._debouncedReadAndNotify()
         }
 
         source.setCancelHandler { [fd] in
@@ -63,7 +73,7 @@ final class FileWatcher: ObservableObject {
         self.source = source
     }
 
-    private func stopMonitoring() {
+    private func _stopMonitoring() {
         debounceWork?.cancel()
         debounceWork = nil
         source?.cancel()
@@ -71,33 +81,41 @@ final class FileWatcher: ObservableObject {
         fileDescriptor = -1
     }
 
-    private func debouncedReadAndNotify() {
+    private func _debouncedReadAndNotify() {
         debounceWork?.cancel()
         let work = DispatchWorkItem { [weak self] in
-            self?.readAndNotify()
+            self?._readAndNotify()
         }
         debounceWork = work
-        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.3, execute: work)
+        queue.asyncAfter(deadline: .now() + 0.3, execute: work)
     }
 
-    private func readAndNotify() {
+    private func _readAndNotify() {
         guard let url = monitoredURL else { return }
         guard let data = try? Data(contentsOf: url),
               let newText = String(data: data, encoding: .utf8) else { return }
 
+        let lastKnown = self.lastKnownDiskText
+        let current = self.currentText
+
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            guard newText != self.lastKnownDiskText else { return }
+            guard newText != lastKnown else { return }
 
-            let hasUnsavedChanges = self.currentText != self.lastKnownDiskText
-            self.lastKnownDiskText = newText
+            let hasUnsavedChanges = current != lastKnown
+
+            self.queue.async { [weak self] in
+                self?.lastKnownDiskText = newText
+            }
 
             guard !hasUnsavedChanges else {
                 DiagnosticLog.log("External file change ignored: unsaved local edits")
                 return
             }
 
-            self.currentText = newText
+            self.queue.async { [weak self] in
+                self?.currentText = newText
+            }
             self.onChange?(newText)
         }
     }
